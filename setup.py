@@ -78,10 +78,17 @@ def configure_tailscale():
     # Configure hostname
     print(f"Current hostname: {existing_hostname}")
     print("(Use different names for different machines, e.g., days-tracker-mac, days-tracker-server)")
-    new_hostname = input(f"Hostname [{existing_hostname}]: ").strip()
-    if new_hostname:
-        existing["TS_HOSTNAME"] = new_hostname
+    choice = input("[K]eep current / [C]hange hostname? [K]: ").strip().lower()
+    if choice == "c":
+        new_hostname = input("Enter new hostname: ").strip()
+        if new_hostname:
+            existing["TS_HOSTNAME"] = new_hostname
+            print(f"Hostname changed to: {new_hostname}")
+        else:
+            print("No hostname entered, keeping current.")
+            existing["TS_HOSTNAME"] = existing_hostname
     else:
+        print(f"Keeping hostname: {existing_hostname}")
         existing["TS_HOSTNAME"] = existing_hostname
 
     # Configure auth key
