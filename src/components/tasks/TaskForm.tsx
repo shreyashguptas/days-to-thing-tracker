@@ -122,18 +122,16 @@ export function TaskForm({ open, onClose, onSubmit, task }: TaskFormProps) {
           <label className="block text-sm font-medium mb-1">
             Repeat every
           </label>
-          <div className="flex gap-3">
+          <div className="grid grid-cols-2 gap-2">
             <Input
               type="number"
               min={1}
               value={intervalValueStr}
               onChange={(e) => setIntervalValueStr(e.target.value)}
-              className="w-24 shrink-0"
             />
             <Select
               value={intervalUnit}
               onChange={(e) => setIntervalUnit(e.target.value as IntervalUnit)}
-              className="min-w-[120px] flex-1"
             >
               <option value="days">Days</option>
               <option value="weeks">Weeks</option>

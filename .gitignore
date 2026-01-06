@@ -51,3 +51,5 @@ next-env.d.ts
 
 # Docker
 .docker/tailscale/state/
+
+/__pycache__/

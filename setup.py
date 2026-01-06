@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-setup.py - Configuration wizard for Days to Thing Tracker
+setup.py - Setup and deploy Days to Thing Tracker
 
 Usage:
-    python setup.py              # Interactive setup
-    python setup.py --check      # Verify configuration
-    python setup.py --reset      # Reset to defaults
+    python setup.py              # Show deployment menu
+    python setup.py --init       # First-time setup
 """
 
 import os
@@ -14,99 +13,31 @@ import subprocess
 import shutil
 import getpass
 from pathlib import Path
-from typing import Optional
 
-# Constants
 PROJECT_ROOT = Path(__file__).parent.absolute()
 ENV_FILE = PROJECT_ROOT / ".env"
-ENV_EXAMPLE = PROJECT_ROOT / ".env.example"
 DOCKER_STATE_DIR = PROJECT_ROOT / ".docker" / "tailscale" / "state"
 DATA_DIR = PROJECT_ROOT / "data"
 
 
-def print_banner():
-    """Display setup banner."""
-    print("\n" + "=" * 55)
-    print("  Days to Thing Tracker - Setup Wizard")
-    print("=" * 55 + "\n")
-
-
-def print_step(step: int, message: str):
-    """Print a step message."""
-    print(f"\n[Step {step}] {message}")
-    print("-" * 40)
-
-
-def check_command(cmd: str) -> bool:
-    """Check if a command exists."""
-    return shutil.which(cmd) is not None
-
-
-def check_docker_compose() -> bool:
-    """Check if docker compose (v2) is available."""
-    try:
-        result = subprocess.run(
-            ["docker", "compose", "version"],
-            capture_output=True,
-            text=True
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
-
-
-def check_dependencies() -> bool:
-    """Verify required tools are installed."""
-    print_step(1, "Checking dependencies")
-
-    required = [
-        ("docker", "Docker"),
-        ("node", "Node.js"),
-        ("npm", "npm"),
-    ]
-
-    all_found = True
-    for cmd, name in required:
-        if check_command(cmd):
-            print(f"  [OK] {name}")
-        else:
-            print(f"  [MISSING] {name}")
-            all_found = False
-
-    # Check docker compose
-    if check_docker_compose():
-        print(f"  [OK] Docker Compose")
+def run(cmd: list, show_output: bool = True) -> bool:
+    """Run a command and return success status."""
+    if show_output:
+        result = subprocess.run(cmd, cwd=PROJECT_ROOT)
     else:
-        print(f"  [MISSING] Docker Compose (v2)")
-        all_found = False
-
-    if not all_found:
-        print("\nPlease install missing dependencies and run setup again.")
-        return False
-
-    print("\nAll dependencies found!")
-    return True
+        result = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True)
+    return result.returncode == 0
 
 
-def prompt(message: str, default: Optional[str] = None) -> str:
-    """Prompt user for input with optional default."""
-    if default:
-        result = input(f"{message} [{default}]: ").strip()
-        return result if result else default
-    return input(f"{message}: ").strip()
-
-
-def prompt_yes_no(message: str, default: bool = True) -> bool:
-    """Prompt for yes/no input."""
-    default_str = "Y/n" if default else "y/N"
-    result = input(f"{message} ({default_str}): ").strip().lower()
-    if not result:
-        return default
-    return result in ("y", "yes")
+def print_header(text: str):
+    """Print a section header."""
+    print(f"\n{'='*50}")
+    print(f"  {text}")
+    print(f"{'='*50}\n")
 
 
 def read_env_file() -> dict:
-    """Read existing .env file if it exists."""
+    """Read existing .env file."""
     config = {}
     if ENV_FILE.exists():
         with open(ENV_FILE, "r") as f:
@@ -118,293 +49,277 @@ def read_env_file() -> dict:
     return config
 
 
-def configure_environment():
-    """Create .env file with user configuration."""
-    print_step(2, "Configuring environment")
-
-    existing_config = read_env_file()
-    config = {}
-
-    # Database URL (default for SQLite)
-    config["DATABASE_URL"] = "file:./data/tasks.db"
-    print(f"Database: SQLite at ./data/tasks.db")
-
-    # Tailscale Auth Key
-    print("\nTailscale Setup:")
-    print("  1. Go to https://login.tailscale.com/admin/settings/keys")
-    print("  2. Generate a new auth key")
-    print("     - Recommended: Reusable key with tags")
-    print("     - Suggested tag: tag:server")
-    print("  3. Copy the key (starts with 'tskey-auth-')")
-
-    existing_key = existing_config.get("TS_AUTHKEY", "")
-    if existing_key:
-        masked = existing_key[:12] + "..." if len(existing_key) > 15 else "***"
-        print(f"\nExisting Tailscale key found: {masked}")
-        if prompt_yes_no("Keep existing key?", default=True):
-            config["TS_AUTHKEY"] = existing_key
-        else:
-            config["TS_AUTHKEY"] = getpass.getpass("Enter new Tailscale Auth Key: ")
-    else:
-        config["TS_AUTHKEY"] = getpass.getpass("\nEnter Tailscale Auth Key: ")
-
-    if not config["TS_AUTHKEY"]:
-        print("\nWARNING: No Tailscale key provided.")
-        print("You can add it later by editing .env file")
-        config["TS_AUTHKEY"] = ""
-
-    # Write .env file
-    env_lines = [
-        "# Auto-generated by setup.py",
-        "# Do not commit this file to version control",
+def save_env_file(config: dict):
+    """Save .env file."""
+    lines = [
+        "# Days to Thing Tracker Configuration",
         "",
-        "# Tailscale Auth Key",
-        f"TS_AUTHKEY={config['TS_AUTHKEY']}",
-        "",
-        "# Database URL",
-        f"DATABASE_URL={config['DATABASE_URL']}",
+        f"TS_AUTHKEY={config.get('TS_AUTHKEY', '')}",
+        f"DATABASE_URL={config.get('DATABASE_URL', 'file:./data/tasks.db')}",
     ]
-
     with open(ENV_FILE, "w") as f:
-        f.write("\n".join(env_lines) + "\n")
-
-    # Set restrictive permissions
+        f.write("\n".join(lines) + "\n")
     os.chmod(ENV_FILE, 0o600)
 
-    print(f"\nConfiguration saved to {ENV_FILE}")
 
+def configure_tailscale():
+    """Configure Tailscale auth key."""
+    print_header("Tailscale Configuration")
 
-def create_directories():
-    """Create necessary directories."""
-    print_step(3, "Creating directories")
+    existing = read_env_file()
+    existing_key = existing.get("TS_AUTHKEY", "")
 
-    directories = [
-        (DOCKER_STATE_DIR, "Tailscale state"),
-        (DATA_DIR, "Database storage"),
-    ]
-
-    for directory, description in directories:
-        directory.mkdir(parents=True, exist_ok=True)
-        print(f"  Created: {directory} ({description})")
-
-
-def install_dependencies():
-    """Install npm dependencies."""
-    print_step(4, "Installing dependencies")
-
-    if (PROJECT_ROOT / "node_modules").exists():
-        print("  node_modules already exists")
-        if not prompt_yes_no("  Reinstall dependencies?", default=False):
-            return
-
-    print("  Running npm install...")
-    result = subprocess.run(
-        ["npm", "install"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True
-    )
-
-    if result.returncode != 0:
-        print(f"  ERROR: npm install failed")
-        print(result.stderr)
-        sys.exit(1)
-
-    print("  Dependencies installed successfully")
-
-
-def initialize_database():
-    """Run Prisma migrations."""
-    print_step(5, "Initializing database")
-
-    # Generate Prisma client
-    print("  Generating Prisma client...")
-    result = subprocess.run(
-        ["npx", "prisma", "generate"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True
-    )
-
-    if result.returncode != 0:
-        print(f"  ERROR: prisma generate failed")
-        print(result.stderr)
-        sys.exit(1)
-
-    # Run migrations
-    print("  Running database migrations...")
-    result = subprocess.run(
-        ["npx", "prisma", "migrate", "deploy"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True
-    )
-
-    if result.returncode != 0:
-        # Check if it's a migration error that can be fixed by reset
-        if "P3018" in result.stderr or "migration failed" in result.stderr.lower():
-            print("  Migration conflict detected. Attempting to reset...")
-
-            # Remove old database and migrations
-            db_files = [
-                PROJECT_ROOT / "prisma" / "dev.db",
-                PROJECT_ROOT / "prisma" / "dev.db-journal",
-                PROJECT_ROOT / "data" / "tasks.db",
-                PROJECT_ROOT / "data" / "tasks.db-journal",
-            ]
-            for f in db_files:
-                if f.exists():
-                    f.unlink()
-
-            migrations_dir = PROJECT_ROOT / "prisma" / "migrations"
-            if migrations_dir.exists():
-                shutil.rmtree(migrations_dir)
-
-            # Run fresh migration
-            print("  Creating fresh database...")
-            result = subprocess.run(
-                ["npx", "prisma", "migrate", "dev", "--name", "init"],
-                cwd=PROJECT_ROOT,
-                capture_output=True,
-                text=True
-            )
-
-            if result.returncode != 0:
-                print(f"  ERROR: prisma migrate failed")
-                print(result.stderr)
-                sys.exit(1)
+    if existing_key:
+        masked = existing_key[:12] + "..." if len(existing_key) > 15 else "***"
+        print(f"Current key: {masked}")
+        choice = input("\n[K]eep current / [N]ew key / [S]kip? [K]: ").strip().lower()
+        if choice == "n":
+            print("\nGet a key from: https://login.tailscale.com/admin/settings/keys")
+            new_key = getpass.getpass("Enter new Tailscale Auth Key: ")
+            existing["TS_AUTHKEY"] = new_key
+            save_env_file(existing)
+            print("Key updated!")
+        elif choice == "s":
+            print("Skipped.")
         else:
-            print(f"  ERROR: prisma migrate failed")
-            print(result.stderr)
-            sys.exit(1)
+            print("Keeping existing key.")
+    else:
+        print("No Tailscale key configured.")
+        print("\nGet a key from: https://login.tailscale.com/admin/settings/keys")
+        print("  - Create a reusable auth key")
+        print("  - Suggested tag: tag:server")
 
-    print("  Database initialized successfully")
+        new_key = getpass.getpass("\nEnter Tailscale Auth Key (or Enter to skip): ")
+        existing["TS_AUTHKEY"] = new_key
+        existing["DATABASE_URL"] = "file:./data/tasks.db"
+        save_env_file(existing)
+
+        if new_key:
+            print("Key saved!")
+        else:
+            print("Skipped - add key to .env later")
 
 
-def build_containers():
-    """Build Docker containers."""
-    print_step(6, "Building Docker containers")
+def deploy_restart():
+    """Quick restart - just restart containers (for code changes bundled in image)."""
+    print_header("Quick Restart")
+    print("Restarting containers...")
+    run(["docker", "compose", "restart"])
+    print("\nDone! App restarted.")
 
-    if not prompt_yes_no("Build Docker containers now?", default=True):
-        print("  Skipping build. Run 'docker compose build' when ready.")
+
+def deploy_refresh():
+    """Refresh - bring down and up (clears container state)."""
+    print_header("Refresh Containers")
+    print("Bringing containers down...")
+    run(["docker", "compose", "down"])
+    print("\nBringing containers up...")
+    run(["docker", "compose", "up", "-d"])
+    print("\nDone! Containers refreshed.")
+
+
+def deploy_rebuild():
+    """Rebuild - rebuild Docker image and restart."""
+    print_header("Rebuild Container")
+    print("Stopping containers...")
+    run(["docker", "compose", "down"])
+    print("\nRebuilding image...")
+    if not run(["docker", "compose", "build"]):
+        print("\nBuild failed!")
+        return
+    print("\nStarting containers...")
+    run(["docker", "compose", "up", "-d"])
+    print("\nDone! Container rebuilt and running.")
+
+
+def deploy_full():
+    """Full rebuild - npm install, prisma, rebuild container."""
+    print_header("Full Rebuild")
+
+    print("Stopping containers...")
+    run(["docker", "compose", "down"])
+
+    print("\nInstalling npm dependencies...")
+    if not run(["npm", "install"]):
+        print("npm install failed!")
         return
 
-    print("  Building containers (this may take a few minutes)...")
-    result = subprocess.run(
-        ["docker", "compose", "build"],
-        cwd=PROJECT_ROOT
-    )
-
-    if result.returncode != 0:
-        print("  WARNING: Build failed. Check the errors above.")
-        print("  You can try again with: docker compose build")
-    else:
-        print("  Containers built successfully!")
-
-
-def print_next_steps():
-    """Display next steps for the user."""
-    print("\n" + "=" * 55)
-    print("  Setup Complete!")
-    print("=" * 55)
-    print("""
-Next steps:
-
-1. Start the application:
-   docker compose up -d
-
-2. View logs:
-   docker compose logs -f
-
-3. Access the app (after Tailscale connects):
-   http://days-tracker:3000
-
-   Or via Magic DNS:
-   http://days-tracker.<your-tailnet>.ts.net:3000
-
-4. Stop the application:
-   docker compose down
-
-Development mode (without Docker):
-   npm run dev
-   (Access at http://localhost:3000)
-
-Useful commands:
-   python setup.py --check    Verify configuration
-   python setup.py --reset    Reset and reconfigure
-""")
-
-
-def verify_configuration():
-    """Check if configuration is valid."""
-    print("\n--- Configuration Check ---\n")
-
-    checks = [
-        (ENV_FILE.exists(), ".env file exists"),
-        (DATA_DIR.exists(), "Data directory exists"),
-        (DOCKER_STATE_DIR.exists(), "Tailscale state directory exists"),
-        ((PROJECT_ROOT / "prisma" / "schema.prisma").exists(), "Prisma schema exists"),
-        ((PROJECT_ROOT / "node_modules").exists(), "Node modules installed"),
-        ((PROJECT_ROOT / "docker-compose.yml").exists(), "docker-compose.yml exists"),
-    ]
-
-    # Check Tailscale key
-    config = read_env_file()
-    ts_key = config.get("TS_AUTHKEY", "")
-    checks.append((bool(ts_key), "Tailscale auth key configured"))
-
-    all_passed = True
-    for passed, description in checks:
-        status = "OK" if passed else "MISSING"
-        symbol = "[OK]" if passed else "[X]"
-        print(f"  {symbol} {description}")
-        if not passed:
-            all_passed = False
-
-    if all_passed:
-        print("\nAll checks passed! You're ready to deploy.")
-    else:
-        print("\nSome checks failed. Run 'python setup.py' to configure.")
-
-    return all_passed
-
-
-def reset_configuration():
-    """Reset configuration."""
-    print("\n--- Reset Configuration ---\n")
-
-    if not prompt_yes_no("This will delete your .env file. Continue?", default=False):
-        print("Aborted.")
+    print("\nGenerating Prisma client...")
+    if not run(["npx", "prisma", "generate"]):
+        print("Prisma generate failed!")
         return
 
-    if ENV_FILE.exists():
-        ENV_FILE.unlink()
-        print("Configuration reset. Run 'python setup.py' to reconfigure.")
+    print("\nRunning database migrations...")
+    run(["npx", "prisma", "migrate", "deploy"])
+
+    print("\nRebuilding Docker image...")
+    if not run(["docker", "compose", "build"]):
+        print("Docker build failed!")
+        return
+
+    print("\nStarting containers...")
+    run(["docker", "compose", "up", "-d"])
+    print("\nDone! Full rebuild complete.")
+
+
+def deploy_clean():
+    """Clean rebuild - remove node_modules, rebuild everything."""
+    print_header("Clean Rebuild")
+
+    confirm = input("This will delete node_modules and rebuild. Continue? [y/N]: ")
+    if confirm.lower() != "y":
+        print("Cancelled.")
+        return
+
+    print("Stopping containers...")
+    run(["docker", "compose", "down"])
+
+    print("\nRemoving node_modules...")
+    node_modules = PROJECT_ROOT / "node_modules"
+    if node_modules.exists():
+        shutil.rmtree(node_modules)
+
+    print("\nInstalling npm dependencies...")
+    if not run(["npm", "install"]):
+        print("npm install failed!")
+        return
+
+    print("\nGenerating Prisma client...")
+    if not run(["npx", "prisma", "generate"]):
+        print("Prisma generate failed!")
+        return
+
+    print("\nRunning database migrations...")
+    run(["npx", "prisma", "migrate", "deploy"])
+
+    print("\nRebuilding Docker image (no cache)...")
+    if not run(["docker", "compose", "build", "--no-cache"]):
+        print("Docker build failed!")
+        return
+
+    print("\nStarting containers...")
+    run(["docker", "compose", "up", "-d"])
+    print("\nDone! Clean rebuild complete.")
+
+
+def show_logs():
+    """Show container logs."""
+    print_header("Container Logs")
+    run(["docker", "compose", "logs", "-f", "--tail=50"])
+
+
+def show_status():
+    """Show container status."""
+    print_header("Container Status")
+    run(["docker", "compose", "ps"])
+
+
+def stop_containers():
+    """Stop all containers."""
+    print_header("Stop Containers")
+    run(["docker", "compose", "down"])
+    print("Containers stopped.")
+
+
+def first_time_setup():
+    """First-time setup wizard."""
+    print_header("First-Time Setup")
+
+    # Create directories
+    DOCKER_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    print("Created data directories.")
+
+    # Configure Tailscale
+    configure_tailscale()
+
+    # Install dependencies
+    print("\nInstalling npm dependencies...")
+    if not run(["npm", "install"]):
+        print("npm install failed!")
+        return
+
+    # Prisma setup
+    print("\nSetting up database...")
+    run(["npx", "prisma", "generate"])
+    run(["npx", "prisma", "migrate", "deploy"])
+
+    # Build and start
+    print("\nBuilding Docker image...")
+    if not run(["docker", "compose", "build"]):
+        print("Docker build failed!")
+        return
+
+    print("\nStarting containers...")
+    run(["docker", "compose", "up", "-d"])
+
+    print_header("Setup Complete!")
+    print("Access the app at:")
+    print("  http://days-tracker:3000")
+    print("  (or your Tailscale hostname)")
+    print("\nRun 'python setup.py' again to see deployment options.")
+
+
+def main_menu():
+    """Show main deployment menu."""
+    print_header("Days to Thing Tracker - Deploy")
+
+    print("Deployment options:\n")
+    print("  1. Restart      - Quick restart                    [DATA SAFE]")
+    print("  2. Refresh      - Down + Up (reset container)      [DATA SAFE]")
+    print("  3. Rebuild      - Rebuild Docker image + restart   [DATA SAFE]")
+    print("  4. Full         - npm + prisma + rebuild image     [RUNS MIGRATIONS]")
+    print("  5. Clean        - Delete node_modules + rebuild    [RUNS MIGRATIONS]")
+    print()
+    print("  6. Status       - Show container status")
+    print("  7. Logs         - Show container logs")
+    print("  8. Stop         - Stop containers")
+    print("  9. Tailscale    - Configure Tailscale key")
+    print()
+    print("  0. Exit")
+    print()
+    print("-" * 50)
+    print("  [DATA SAFE]       = Your tasks are safe")
+    print("  [RUNS MIGRATIONS] = Runs DB migrations (usually safe,")
+    print("                      but backup data/ folder first if unsure)")
+    print()
+
+    choice = input("Choose [1-9, 0]: ").strip()
+
+    actions = {
+        "1": deploy_restart,
+        "2": deploy_refresh,
+        "3": deploy_rebuild,
+        "4": deploy_full,
+        "5": deploy_clean,
+        "6": show_status,
+        "7": show_logs,
+        "8": stop_containers,
+        "9": configure_tailscale,
+        "0": lambda: sys.exit(0),
+    }
+
+    action = actions.get(choice)
+    if action:
+        action()
     else:
-        print("No configuration file found.")
+        print("Invalid choice.")
 
 
 def main():
-    """Main entry point."""
-    if "--check" in sys.argv:
-        verify_configuration()
+    if "--init" in sys.argv:
+        first_time_setup()
         return
 
-    if "--reset" in sys.argv:
-        reset_configuration()
-        return
+    # Check if first-time setup needed
+    if not ENV_FILE.exists() or not (PROJECT_ROOT / "node_modules").exists():
+        print("\nFirst-time setup required.")
+        confirm = input("Run setup now? [Y/n]: ").strip().lower()
+        if confirm != "n":
+            first_time_setup()
+            return
 
-    print_banner()
-
-    if not check_dependencies():
-        sys.exit(1)
-
-    configure_environment()
-    create_directories()
-    install_dependencies()
-    initialize_database()
-    build_containers()
-    print_next_steps()
+    main_menu()
 
 
 if __name__ == "__main__":

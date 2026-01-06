@@ -53,7 +53,7 @@ export function Dialog({ open, onClose, children, title }: DialogProps) {
       {/* Dialog panel */}
       <div
         ref={dialogRef}
-        className="relative z-10 w-full max-w-md mx-4 rounded-xl border border-border bg-background p-4 sm:p-6 shadow-lg overflow-visible max-h-[90vh] overflow-y-auto"
+        className="relative z-10 w-full max-w-md mx-4 rounded-xl border border-border bg-background p-4 sm:p-6 shadow-lg max-h-[90vh] overflow-y-auto"
       >
         {title && (
           <h2
