@@ -86,7 +86,7 @@ export function useTasks() {
   );
 
   const completeTask = useCallback(
-    async (id: string) => {
+    async (id: string): Promise<{ daysUntilDue: number }> => {
       const response = await fetch(`/api/tasks/${id}/complete`, {
         method: "POST",
       });
@@ -96,7 +96,9 @@ export function useTasks() {
         throw new Error(error.error || "Failed to complete task");
       }
 
+      const data = await response.json();
       await fetchTasks();
+      return { daysUntilDue: data.task.daysUntilDue };
     },
     [fetchTasks]
   );

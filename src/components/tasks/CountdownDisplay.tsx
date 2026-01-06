@@ -1,7 +1,6 @@
 "use client";
 
 import type { UrgencyLevel } from "@/types";
-import { formatDaysUntilDue } from "@/lib/date-utils";
 
 interface CountdownDisplayProps {
   daysUntilDue: number;
@@ -20,17 +19,33 @@ export function CountdownDisplay({
   };
 
   const displayNumber = Math.abs(daysUntilDue);
-  const text = formatDaysUntilDue(daysUntilDue);
+
+  // Format the display text
+  const getDisplayText = () => {
+    if (daysUntilDue < 0) {
+      return { number: displayNumber, suffix: displayNumber === 1 ? "day overdue" : "days overdue" };
+    }
+    if (daysUntilDue === 0) {
+      return { number: null, suffix: "Due today" };
+    }
+    return { number: displayNumber, suffix: displayNumber === 1 ? "day left" : "days left" };
+  };
+
+  const { number, suffix } = getDisplayText();
 
   return (
-    <div className="flex flex-col items-end">
-      <span
-        className={`text-2xl font-bold tabular-nums ${textColors[urgency]}`}
-        key={displayNumber}
-      >
-        {displayNumber}
+    <div className="flex items-baseline gap-1.5 shrink-0">
+      {number !== null && (
+        <span
+          className={`text-xl sm:text-2xl font-bold tabular-nums ${textColors[urgency]}`}
+          key={displayNumber}
+        >
+          {number}
+        </span>
+      )}
+      <span className={`text-xs sm:text-sm ${number === null ? textColors[urgency] + " font-semibold" : "text-muted-foreground"}`}>
+        {suffix}
       </span>
-      <span className="text-xs text-muted-foreground">{text}</span>
     </div>
   );
 }

@@ -58,19 +58,19 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">Days to Thing</h1>
+        <div className="container mx-auto px-3 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-semibold truncate">Days to Thing</h1>
             {!isLoading && totalTasks > 0 && (
               <p className="text-xs text-muted-foreground">
-                {totalTasks} task{totalTasks !== 1 ? "s" : ""} tracked
+                {totalTasks} task{totalTasks !== 1 ? "s" : ""}
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button onClick={handleOpenForm}>
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <Button onClick={handleOpenForm} size="sm" className="sm:h-10 sm:px-4 sm:text-sm">
               <svg
-                className="w-4 h-4 mr-1"
+                className="w-4 h-4 sm:mr-1"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -82,14 +82,14 @@ export default function Home() {
                   d="M12 4v16m8-8H4"
                 />
               </svg>
-              Add Task
+              <span className="hidden sm:inline">Add Task</span>
             </Button>
             <ThemeToggle />
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-2xl">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground" />

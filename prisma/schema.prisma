@@ -27,8 +27,22 @@ model Task {
   // Soft delete support
   isArchived      Boolean   @default(false)
 
+  // Completion history
+  completions     TaskCompletion[]
+
   @@index([isArchived])
   @@index([lastCompletedAt])
+}
+
+model TaskCompletion {
+  id          String   @id @default(cuid())
+  taskId      String
+  completedAt DateTime @default(now())
+
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([completedAt])
 }
 
 model Settings {

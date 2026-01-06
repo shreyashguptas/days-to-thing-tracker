@@ -6,7 +6,7 @@ import { TaskSection } from "./TaskSection";
 
 interface TaskListProps {
   tasks: TasksResponse;
-  onComplete: (id: string) => Promise<void>;
+  onComplete: (id: string) => Promise<{ daysUntilDue: number }>;
   onEdit: (task: TaskWithDue) => void;
   onDelete: (id: string) => Promise<void>;
 }

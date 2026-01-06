@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  calculateNextDueDate,
+  calculateDaysUntilDue,
+} from "@/lib/date-utils";
+import type { IntervalUnit } from "@/types";
 
 export async function POST(
   request: Request,
@@ -15,12 +20,32 @@ export async function POST(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    const task = await prisma.task.update({
-      where: { id },
-      data: {
-        lastCompletedAt: new Date(),
-      },
-    });
+    const now = new Date();
+
+    // Update task and create completion history entry
+    const [task] = await prisma.$transaction([
+      prisma.task.update({
+        where: { id },
+        data: {
+          lastCompletedAt: now,
+        },
+      }),
+      prisma.taskCompletion.create({
+        data: {
+          taskId: id,
+          completedAt: now,
+        },
+      }),
+    ]);
+
+    // Calculate new due date info for toast
+    const nextDueDate = calculateNextDueDate(
+      now,
+      task.intervalValue,
+      task.intervalUnit as IntervalUnit,
+      task.createdAt
+    );
+    const daysUntilDue = calculateDaysUntilDue(nextDueDate);
 
     return NextResponse.json({
       success: true,
@@ -29,6 +54,8 @@ export async function POST(
         lastCompletedAt: task.lastCompletedAt?.toISOString() ?? null,
         createdAt: task.createdAt.toISOString(),
         updatedAt: task.updatedAt.toISOString(),
+        nextDueDate: nextDueDate.toISOString(),
+        daysUntilDue,
       },
     });
   } catch (error) {

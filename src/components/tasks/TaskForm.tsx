@@ -17,7 +17,7 @@ interface TaskFormProps {
 export function TaskForm({ open, onClose, onSubmit, task }: TaskFormProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [intervalValue, setIntervalValue] = useState(1);
+  const [intervalValueStr, setIntervalValueStr] = useState("1");
   const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>("months");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -26,12 +26,12 @@ export function TaskForm({ open, onClose, onSubmit, task }: TaskFormProps) {
     if (task) {
       setName(task.name);
       setDescription(task.description || "");
-      setIntervalValue(task.intervalValue);
+      setIntervalValueStr(String(task.intervalValue));
       setIntervalUnit(task.intervalUnit);
     } else {
       setName("");
       setDescription("");
-      setIntervalValue(1);
+      setIntervalValueStr("1");
       setIntervalUnit("months");
     }
     setError("");
@@ -46,6 +46,7 @@ export function TaskForm({ open, onClose, onSubmit, task }: TaskFormProps) {
       return;
     }
 
+    const intervalValue = parseInt(intervalValueStr) || 0;
     if (intervalValue < 1) {
       setError("Interval must be at least 1");
       return;
@@ -121,18 +122,18 @@ export function TaskForm({ open, onClose, onSubmit, task }: TaskFormProps) {
           <label className="block text-sm font-medium mb-1">
             Repeat every
           </label>
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <Input
               type="number"
               min={1}
-              value={intervalValue}
-              onChange={(e) => setIntervalValue(parseInt(e.target.value) || 1)}
-              className="w-20"
+              value={intervalValueStr}
+              onChange={(e) => setIntervalValueStr(e.target.value)}
+              className="w-24 shrink-0"
             />
             <Select
               value={intervalUnit}
               onChange={(e) => setIntervalUnit(e.target.value as IntervalUnit)}
-              className="flex-1"
+              className="min-w-[120px] flex-1"
             >
               <option value="days">Days</option>
               <option value="weeks">Weeks</option>
