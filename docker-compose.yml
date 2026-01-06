@@ -2,7 +2,7 @@ services:
   tailscale:
     image: tailscale/tailscale:latest
     container_name: days-tracker-tailscale
-    hostname: days-tracker
+    hostname: ${TS_HOSTNAME:-days-tracker}
     cap_add:
       - NET_ADMIN
       - SYS_MODULE

@@ -20,6 +20,11 @@ DOCKER_STATE_DIR = PROJECT_ROOT / ".docker" / "tailscale" / "state"
 DATA_DIR = PROJECT_ROOT / "data"
 
 
+def has_npm() -> bool:
+    """Check if npm is available."""
+    return shutil.which("npm") is not None
+
+
 def run(cmd: list, show_output: bool = True) -> bool:
     """Run a command and return success status."""
     if show_output:
@@ -55,6 +60,7 @@ def save_env_file(config: dict):
         "# Days to Thing Tracker Configuration",
         "",
         f"TS_AUTHKEY={config.get('TS_AUTHKEY', '')}",
+        f"TS_HOSTNAME={config.get('TS_HOSTNAME', 'days-tracker')}",
         f"DATABASE_URL={config.get('DATABASE_URL', 'file:./data/tasks.db')}",
     ]
     with open(ENV_FILE, "w") as f:
@@ -63,41 +69,44 @@ def save_env_file(config: dict):
 
 
 def configure_tailscale():
-    """Configure Tailscale auth key."""
+    """Configure Tailscale auth key and hostname."""
     print_header("Tailscale Configuration")
 
     existing = read_env_file()
     existing_key = existing.get("TS_AUTHKEY", "")
+    existing_hostname = existing.get("TS_HOSTNAME", "days-tracker")
 
+    # Configure hostname
+    print(f"Current hostname: {existing_hostname}")
+    print("(Use different names for different machines, e.g., days-tracker-mac, days-tracker-server)")
+    new_hostname = input(f"Hostname [{existing_hostname}]: ").strip()
+    if new_hostname:
+        existing["TS_HOSTNAME"] = new_hostname
+    else:
+        existing["TS_HOSTNAME"] = existing_hostname
+
+    # Configure auth key
     if existing_key:
         masked = existing_key[:12] + "..." if len(existing_key) > 15 else "***"
-        print(f"Current key: {masked}")
-        choice = input("\n[K]eep current / [N]ew key / [S]kip? [K]: ").strip().lower()
+        print(f"\nCurrent key: {masked}")
+        choice = input("[K]eep current / [N]ew key / [S]kip? [K]: ").strip().lower()
         if choice == "n":
             print("\nGet a key from: https://login.tailscale.com/admin/settings/keys")
             new_key = getpass.getpass("Enter new Tailscale Auth Key: ")
             existing["TS_AUTHKEY"] = new_key
-            save_env_file(existing)
-            print("Key updated!")
-        elif choice == "s":
-            print("Skipped.")
-        else:
+        elif choice != "s":
             print("Keeping existing key.")
     else:
-        print("No Tailscale key configured.")
-        print("\nGet a key from: https://login.tailscale.com/admin/settings/keys")
+        print("\nNo Tailscale key configured.")
+        print("Get a key from: https://login.tailscale.com/admin/settings/keys")
         print("  - Create a reusable auth key")
         print("  - Suggested tag: tag:server")
-
         new_key = getpass.getpass("\nEnter Tailscale Auth Key (or Enter to skip): ")
         existing["TS_AUTHKEY"] = new_key
-        existing["DATABASE_URL"] = "file:./data/tasks.db"
-        save_env_file(existing)
 
-        if new_key:
-            print("Key saved!")
-        else:
-            print("Skipped - add key to .env later")
+    existing["DATABASE_URL"] = "file:./data/tasks.db"
+    save_env_file(existing)
+    print("\nConfiguration saved!")
 
 
 def deploy_restart():
@@ -139,18 +148,21 @@ def deploy_full():
     print("Stopping containers...")
     run(["docker", "compose", "down"])
 
-    print("\nInstalling npm dependencies...")
-    if not run(["npm", "install"]):
-        print("npm install failed!")
-        return
+    if has_npm():
+        print("\nInstalling npm dependencies...")
+        if not run(["npm", "install"]):
+            print("npm install failed!")
+            return
 
-    print("\nGenerating Prisma client...")
-    if not run(["npx", "prisma", "generate"]):
-        print("Prisma generate failed!")
-        return
+        print("\nGenerating Prisma client...")
+        if not run(["npx", "prisma", "generate"]):
+            print("Prisma generate failed!")
+            return
 
-    print("\nRunning database migrations...")
-    run(["npx", "prisma", "migrate", "deploy"])
+        print("\nRunning database migrations...")
+        run(["npx", "prisma", "migrate", "deploy"])
+    else:
+        print("\nNote: npm not found - skipping local npm/prisma")
 
     print("\nRebuilding Docker image...")
     if not run(["docker", "compose", "build"]):
@@ -166,7 +178,7 @@ def deploy_clean():
     """Clean rebuild - remove node_modules, rebuild everything."""
     print_header("Clean Rebuild")
 
-    confirm = input("This will delete node_modules and rebuild. Continue? [y/N]: ")
+    confirm = input("This will rebuild with --no-cache. Continue? [y/N]: ")
     if confirm.lower() != "y":
         print("Cancelled.")
         return
@@ -174,23 +186,26 @@ def deploy_clean():
     print("Stopping containers...")
     run(["docker", "compose", "down"])
 
-    print("\nRemoving node_modules...")
-    node_modules = PROJECT_ROOT / "node_modules"
-    if node_modules.exists():
-        shutil.rmtree(node_modules)
+    if has_npm():
+        print("\nRemoving node_modules...")
+        node_modules = PROJECT_ROOT / "node_modules"
+        if node_modules.exists():
+            shutil.rmtree(node_modules)
 
-    print("\nInstalling npm dependencies...")
-    if not run(["npm", "install"]):
-        print("npm install failed!")
-        return
+        print("\nInstalling npm dependencies...")
+        if not run(["npm", "install"]):
+            print("npm install failed!")
+            return
 
-    print("\nGenerating Prisma client...")
-    if not run(["npx", "prisma", "generate"]):
-        print("Prisma generate failed!")
-        return
+        print("\nGenerating Prisma client...")
+        if not run(["npx", "prisma", "generate"]):
+            print("Prisma generate failed!")
+            return
 
-    print("\nRunning database migrations...")
-    run(["npx", "prisma", "migrate", "deploy"])
+        print("\nRunning database migrations...")
+        run(["npx", "prisma", "migrate", "deploy"])
+    else:
+        print("\nNote: npm not found - skipping local npm/prisma")
 
     print("\nRebuilding Docker image (no cache)...")
     if not run(["docker", "compose", "build", "--no-cache"]):
@@ -233,16 +248,19 @@ def first_time_setup():
     # Configure Tailscale
     configure_tailscale()
 
-    # Install dependencies
-    print("\nInstalling npm dependencies...")
-    if not run(["npm", "install"]):
-        print("npm install failed!")
-        return
+    # Check if npm is available (local dev) or Docker-only (server)
+    if has_npm():
+        print("\nInstalling npm dependencies...")
+        if not run(["npm", "install"]):
+            print("npm install failed!")
+            return
 
-    # Prisma setup
-    print("\nSetting up database...")
-    run(["npx", "prisma", "generate"])
-    run(["npx", "prisma", "migrate", "deploy"])
+        print("\nSetting up database...")
+        run(["npx", "prisma", "generate"])
+        run(["npx", "prisma", "migrate", "deploy"])
+    else:
+        print("\nNote: npm not found - using Docker-only deployment")
+        print("(npm/prisma will run inside Docker container)")
 
     # Build and start
     print("\nBuilding Docker image...")
@@ -311,8 +329,8 @@ def main():
         first_time_setup()
         return
 
-    # Check if first-time setup needed
-    if not ENV_FILE.exists() or not (PROJECT_ROOT / "node_modules").exists():
+    # Check if first-time setup needed (only check .env, not node_modules)
+    if not ENV_FILE.exists():
         print("\nFirst-time setup required.")
         confirm = input("Run setup now? [Y/n]: ").strip().lower()
         if confirm != "n":
