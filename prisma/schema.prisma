@@ -1,0 +1,38 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Task {
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+
+  // Interval configuration
+  intervalValue   Int       // The numeric value (e.g., 6)
+  intervalUnit    String    // "days", "weeks", or "months"
+
+  // Tracking dates
+  lastCompletedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Soft delete support
+  isArchived      Boolean   @default(false)
+
+  @@index([isArchived])
+  @@index([lastCompletedAt])
+}
+
+model Settings {
+  id        String   @id @default("singleton")
+  theme     String   @default("system") // "light", "dark", "system"
+  updatedAt DateTime @updatedAt
+}

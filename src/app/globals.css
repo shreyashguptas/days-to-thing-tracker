@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #f5f5f5;
+  --card-foreground: #0a0a0a;
+  --muted: #737373;
+  --muted-foreground: #525252;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #0a0a0a;
+
+  /* Urgency colors */
+  --urgency-overdue: #ef4444;
+  --urgency-overdue-bg: #fef2f2;
+  --urgency-today: #f59e0b;
+  --urgency-today-bg: #fffbeb;
+  --urgency-week: #3b82f6;
+  --urgency-week-bg: #eff6ff;
+  --urgency-upcoming: #9ca3af;
+  --urgency-upcoming-bg: #f9fafb;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --card: #171717;
+  --card-foreground: #fafafa;
+  --muted: #a3a3a3;
+  --muted-foreground: #a3a3a3;
+  --border: #262626;
+  --input: #262626;
+  --ring: #fafafa;
+
+  /* Urgency colors for dark mode */
+  --urgency-overdue: #f87171;
+  --urgency-overdue-bg: #450a0a;
+  --urgency-today: #fbbf24;
+  --urgency-today-bg: #451a03;
+  --urgency-week: #60a5fa;
+  --urgency-week-bg: #172554;
+  --urgency-upcoming: #6b7280;
+  --urgency-upcoming-bg: #1f2937;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Smooth transitions for theme changes */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Pulse animation for overdue items */
+@keyframes pulse-urgency {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse-urgency {
+  animation: pulse-urgency 2s ease-in-out infinite;
+}
+
+/* Number transition animation */
+@keyframes count-change {
+  0% {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-count {
+  animation: count-change 0.3s ease-out;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
