@@ -17,7 +17,6 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.absolute()
 ENV_FILE = PROJECT_ROOT / ".env"
 DOCKER_STATE_DIR = PROJECT_ROOT / ".docker" / "tailscale" / "state"
-DATA_DIR = PROJECT_ROOT / "data"
 
 
 def has_npm() -> bool:
@@ -236,27 +235,13 @@ def stop_containers():
     print("Containers stopped.")
 
 
-def fix_data_permissions():
-    """Fix permissions on data directory for Docker."""
-    # The container runs as uid 1001, so we need to make data writable
-    if DATA_DIR.exists():
-        # Try to set permissions (may need sudo on Linux)
-        try:
-            os.chmod(DATA_DIR, 0o777)
-            print("Fixed data directory permissions.")
-        except PermissionError:
-            print("Note: Run 'sudo chown -R 1001:1001 ./data' to fix permissions")
-
-
 def first_time_setup():
     """First-time setup wizard."""
     print_header("First-Time Setup")
 
-    # Create directories
+    # Create Tailscale state directory (data is handled by Docker volume)
     DOCKER_STATE_DIR.mkdir(parents=True, exist_ok=True)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(DATA_DIR, 0o777)  # Make writable for container
-    print("Created data directories.")
+    print("Created Tailscale state directory.")
 
     # Configure Tailscale
     configure_tailscale()
@@ -306,17 +291,15 @@ def main_menu():
     print("  7. Logs         - Show container logs")
     print("  8. Stop         - Stop containers")
     print("  9. Tailscale    - Configure Tailscale key")
-    print("  p. Permissions  - Fix data folder permissions")
     print()
     print("  0. Exit")
     print()
     print("-" * 50)
     print("  [DATA SAFE]       = Your tasks are safe")
-    print("  [RUNS MIGRATIONS] = Runs DB migrations (usually safe,")
-    print("                      but backup data/ folder first if unsure)")
+    print("  [RUNS MIGRATIONS] = Runs DB migrations (usually safe)")
     print()
 
-    choice = input("Choose [1-9, p, 0]: ").strip().lower()
+    choice = input("Choose [1-9, 0]: ").strip()
 
     actions = {
         "1": deploy_restart,
@@ -328,7 +311,6 @@ def main_menu():
         "7": show_logs,
         "8": stop_containers,
         "9": configure_tailscale,
-        "p": fix_data_permissions,
         "0": lambda: sys.exit(0),
     }
 

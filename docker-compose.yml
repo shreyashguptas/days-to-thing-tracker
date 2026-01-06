@@ -28,7 +28,10 @@ services:
       - DATABASE_URL=file:/app/data/tasks.db
       - NODE_ENV=production
     volumes:
-      - ./data:/app/data
+      - app-data:/app/data
     depends_on:
       - tailscale
     restart: unless-stopped
+
+volumes:
+  app-data:
