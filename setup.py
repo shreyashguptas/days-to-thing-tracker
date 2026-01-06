@@ -241,9 +241,42 @@ def initialize_database():
     )
 
     if result.returncode != 0:
-        print(f"  ERROR: prisma migrate failed")
-        print(result.stderr)
-        sys.exit(1)
+        # Check if it's a migration error that can be fixed by reset
+        if "P3018" in result.stderr or "migration failed" in result.stderr.lower():
+            print("  Migration conflict detected. Attempting to reset...")
+
+            # Remove old database and migrations
+            db_files = [
+                PROJECT_ROOT / "prisma" / "dev.db",
+                PROJECT_ROOT / "prisma" / "dev.db-journal",
+                PROJECT_ROOT / "data" / "tasks.db",
+                PROJECT_ROOT / "data" / "tasks.db-journal",
+            ]
+            for f in db_files:
+                if f.exists():
+                    f.unlink()
+
+            migrations_dir = PROJECT_ROOT / "prisma" / "migrations"
+            if migrations_dir.exists():
+                shutil.rmtree(migrations_dir)
+
+            # Run fresh migration
+            print("  Creating fresh database...")
+            result = subprocess.run(
+                ["npx", "prisma", "migrate", "dev", "--name", "init"],
+                cwd=PROJECT_ROOT,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                print(f"  ERROR: prisma migrate failed")
+                print(result.stderr)
+                sys.exit(1)
+        else:
+            print(f"  ERROR: prisma migrate failed")
+            print(result.stderr)
+            sys.exit(1)
 
     print("  Database initialized successfully")
 

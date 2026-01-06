@@ -23,4 +23,3 @@ CREATE INDEX "Task_isArchived_idx" ON "Task"("isArchived");
 
 -- CreateIndex
 CREATE INDEX "Task_lastCompletedAt_idx" ON "Task"("lastCompletedAt");
- 

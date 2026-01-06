@@ -44,20 +44,21 @@ COPY --from=builder /app/public ./public
 RUN mkdir .next
 RUN chown nextjs:nodejs .next
 
-# Copy standalone build
+# Copy standalone build (includes node_modules needed for runtime)
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Copy Prisma files for migrations
+# Copy Prisma schema and config for migrations
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/package.json ./package.json
+
+# Copy generated Prisma client
 COPY --from=builder /app/src/generated ./src/generated
 
-# Copy libsql adapter dependencies
-COPY --from=builder /app/node_modules/@prisma/adapter-libsql ./node_modules/@prisma/adapter-libsql
-COPY --from=builder /app/node_modules/@libsql ./node_modules/@libsql
-COPY --from=builder /app/node_modules/libsql ./node_modules/libsql
+# Copy Prisma CLI and all its dependencies for migrations
+# Prisma 7 has many transitive dependencies, so we copy them all
+COPY --from=builder /app/node_modules ./node_modules
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
@@ -71,4 +72,4 @@ ENV HOSTNAME="0.0.0.0"
 ENV DATABASE_URL="file:/app/data/tasks.db"
 
 # Run migrations and start server
-CMD npx prisma migrate deploy && node server.js
+CMD node ./node_modules/prisma/build/index.js migrate deploy && node server.js
