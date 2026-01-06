@@ -236,6 +236,18 @@ def stop_containers():
     print("Containers stopped.")
 
 
+def fix_data_permissions():
+    """Fix permissions on data directory for Docker."""
+    # The container runs as uid 1001, so we need to make data writable
+    if DATA_DIR.exists():
+        # Try to set permissions (may need sudo on Linux)
+        try:
+            os.chmod(DATA_DIR, 0o777)
+            print("Fixed data directory permissions.")
+        except PermissionError:
+            print("Note: Run 'sudo chown -R 1001:1001 ./data' to fix permissions")
+
+
 def first_time_setup():
     """First-time setup wizard."""
     print_header("First-Time Setup")
@@ -243,6 +255,7 @@ def first_time_setup():
     # Create directories
     DOCKER_STATE_DIR.mkdir(parents=True, exist_ok=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(DATA_DIR, 0o777)  # Make writable for container
     print("Created data directories.")
 
     # Configure Tailscale
@@ -293,6 +306,7 @@ def main_menu():
     print("  7. Logs         - Show container logs")
     print("  8. Stop         - Stop containers")
     print("  9. Tailscale    - Configure Tailscale key")
+    print("  p. Permissions  - Fix data folder permissions")
     print()
     print("  0. Exit")
     print()
@@ -302,7 +316,7 @@ def main_menu():
     print("                      but backup data/ folder first if unsure)")
     print()
 
-    choice = input("Choose [1-9, 0]: ").strip()
+    choice = input("Choose [1-9, p, 0]: ").strip().lower()
 
     actions = {
         "1": deploy_restart,
@@ -314,6 +328,7 @@ def main_menu():
         "7": show_logs,
         "8": stop_containers,
         "9": configure_tailscale,
+        "p": fix_data_permissions,
         "0": lambda: sys.exit(0),
     }
 
