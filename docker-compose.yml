@@ -8,6 +8,7 @@ services:
       - SYS_MODULE
     volumes:
       - ./.docker/tailscale/state:/var/lib/tailscale
+      - tailscale-socket:/var/run/tailscale
       - /dev/net/tun:/dev/net/tun
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
@@ -23,14 +24,12 @@ services:
     depends_on:
       - tailscale
     volumes:
-      - ./.docker/tailscale/state:/var/lib/tailscale:ro
-    environment:
-      - TS_STATE_DIR=/var/lib/tailscale
+      - tailscale-socket:/var/run/tailscale
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         echo "Waiting for Tailscale to connect..."
-        sleep 10
+        sleep 15
         echo "Configuring Tailscale Serve..."
         tailscale serve --bg --https=443 http://127.0.0.1:3000 || echo "Serve config may already exist"
         echo "Tailscale Serve configured. Exiting sidecar."
@@ -53,3 +52,4 @@ services:
 
 volumes:
   app-data:
+  tailscale-socket:
