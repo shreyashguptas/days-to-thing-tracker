@@ -12,6 +12,7 @@ GPIO Pin Configuration:
 - CLK (A): GPIO 17
 - DT (B):  GPIO 27
 - SW:      GPIO 22
+- BL:      GPIO 18 (display backlight)
 """
 
 import subprocess
@@ -20,15 +21,16 @@ import time
 from signal import pause
 
 try:
-    from gpiozero import RotaryEncoder, Button
+    from gpiozero import RotaryEncoder, Button, LED
 except ImportError:
     print("Error: gpiozero not installed. Run: sudo apt install python3-gpiozero")
     sys.exit(1)
 
 # GPIO Pin Configuration
-PIN_CLK = 17  # Encoder CLK (A)
-PIN_DT = 27   # Encoder DT (B)
-PIN_SW = 22   # Encoder Switch (button)
+PIN_CLK = 17       # Encoder CLK (A)
+PIN_DT = 27        # Encoder DT (B)
+PIN_SW = 22        # Encoder Switch (button)
+PIN_BACKLIGHT = 18 # Display backlight
 
 # Debounce settings
 ROTATION_DEBOUNCE = 0.05  # seconds
@@ -48,6 +50,7 @@ button_press_time = 0  # Track when button was pressed
 # Idle timeout state
 last_activity_time = 0  # Will be initialized in main()
 screen_is_on = True
+backlight = None  # Will be initialized in main()
 
 
 def send_key(key: str) -> None:
@@ -66,35 +69,21 @@ def send_key(key: str) -> None:
 
 
 def screen_off() -> None:
-    """Turn off the display using DPMS."""
+    """Turn off the display backlight via GPIO."""
     global screen_is_on
-    if screen_is_on:
-        try:
-            subprocess.run(
-                ["xset", "-display", ":0", "dpms", "force", "off"],
-                check=True,
-                capture_output=True
-            )
-            screen_is_on = False
-            print("Screen turned OFF (idle timeout)")
-        except subprocess.CalledProcessError as e:
-            print(f"Error turning screen off: {e}")
+    if screen_is_on and backlight is not None:
+        backlight.off()
+        screen_is_on = False
+        print("Backlight OFF (idle timeout)")
 
 
 def screen_on() -> None:
-    """Turn on the display using DPMS."""
+    """Turn on the display backlight via GPIO."""
     global screen_is_on
-    if not screen_is_on:
-        try:
-            subprocess.run(
-                ["xset", "-display", ":0", "dpms", "force", "on"],
-                check=True,
-                capture_output=True
-            )
-            screen_is_on = True
-            print("Screen turned ON (user activity)")
-        except subprocess.CalledProcessError as e:
-            print(f"Error turning screen on: {e}")
+    if not screen_is_on and backlight is not None:
+        backlight.on()
+        screen_is_on = True
+        print("Backlight ON (user activity)")
 
 
 def record_activity() -> None:
@@ -157,10 +146,13 @@ def on_button_released() -> None:
 
 def main() -> None:
     """Main function to set up encoder and button handlers."""
+    global last_activity_time, backlight
+
     print("Rotary Encoder Handler Starting...")
     print(f"  CLK: GPIO {PIN_CLK}")
     print(f"  DT:  GPIO {PIN_DT}")
     print(f"  SW:  GPIO {PIN_SW}")
+    print(f"  BL:  GPIO {PIN_BACKLIGHT}")
     print("")
     print("Controls:")
     print("  Clockwise      -> Down arrow (move focus down)")
@@ -168,12 +160,14 @@ def main() -> None:
     print("  Short press    -> Enter (select)")
     print(f"  Long press (>{LONG_PRESS_TIME}s) -> Escape (back)")
     print("")
-    print(f"Screen will turn off after {IDLE_TIMEOUT}s of inactivity")
+    print(f"Backlight will turn off after {IDLE_TIMEOUT}s of inactivity")
     print("Press Ctrl+C to exit")
     print("")
 
+    # Initialize backlight control (start with backlight ON)
+    backlight = LED(PIN_BACKLIGHT, initial_value=True)
+
     # Initialize idle timeout tracking
-    global last_activity_time
     last_activity_time = time.time()
 
     # Set up rotary encoder
