@@ -21,7 +21,7 @@ import time
 from signal import pause
 
 try:
-    from gpiozero import RotaryEncoder, Button, LED
+    from gpiozero import RotaryEncoder, Button, OutputDevice
 except ImportError:
     print("Error: gpiozero not installed. Run: sudo apt install python3-gpiozero")
     sys.exit(1)
@@ -33,7 +33,7 @@ PIN_SW = 22        # Encoder Switch (button)
 PIN_BACKLIGHT = 18 # Display backlight
 
 # Debounce settings
-ROTATION_DEBOUNCE = 0.05  # seconds
+ROTATION_DEBOUNCE = 0.02  # 20ms - snappy rotation response
 BUTTON_DEBOUNCE = 0.2     # seconds
 
 # Long press threshold
@@ -87,10 +87,14 @@ def screen_on() -> None:
 
 
 def record_activity() -> None:
-    """Record user activity and wake screen if needed."""
-    global last_activity_time
+    """Record user activity and wake screen immediately if off."""
+    global last_activity_time, screen_is_on
     last_activity_time = time.time()
-    screen_on()
+    # Inline wake-up for instant response (bypass screen_on() overhead)
+    if not screen_is_on and backlight is not None:
+        backlight.on()
+        screen_is_on = True
+        print("Backlight ON (user activity)")
 
 
 def on_rotate_clockwise() -> None:
@@ -165,7 +169,8 @@ def main() -> None:
     print("")
 
     # Initialize backlight control (start with backlight ON)
-    backlight = LED(PIN_BACKLIGHT, initial_value=True)
+    # Using OutputDevice for direct GPIO control (faster than LED)
+    backlight = OutputDevice(PIN_BACKLIGHT, initial_value=True)
 
     # Initialize idle timeout tracking
     last_activity_time = time.time()
@@ -185,14 +190,20 @@ def main() -> None:
 
     # Polling loop for encoder rotation
     # (gpiozero's when_rotated callbacks can be unreliable)
+    # Note: gpiozero counts 2 physical detents as 1 step, so we fire 2x per step
     try:
         while True:
             current_steps = encoder.steps
-            if current_steps > last_steps:
-                on_rotate_clockwise()
-            elif current_steps < last_steps:
-                on_rotate_counter_clockwise()
-            last_steps = current_steps
+            diff = current_steps - last_steps
+            if diff != 0:
+                # Fire handler for each detent (2x per gpiozero step)
+                num_inputs = abs(diff) * 2
+                for _ in range(num_inputs):
+                    if diff > 0:
+                        on_rotate_clockwise()
+                    else:
+                        on_rotate_counter_clockwise()
+                last_steps = current_steps
 
             # Check for idle timeout
             if screen_is_on and (time.time() - last_activity_time > IDLE_TIMEOUT):
