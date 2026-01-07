@@ -219,6 +219,7 @@ def main() -> None:
 
     # Track CLK state for edge detection
     last_clk = clk.is_pressed
+    edge_count = 0  # Toggle to fire every other edge
 
     # Set up button with pull-up (button connects to GND when pressed)
     button = Button(PIN_SW, pull_up=True, bounce_time=0.05)
@@ -226,30 +227,23 @@ def main() -> None:
     button.when_released = on_button_released
 
     # Polling loop for encoder rotation
-    # Detects ANY edge on CLK and reads DT to determine direction
+    # Detects edges on CLK, fires every other edge for 1:1 detent mapping
     try:
         while True:
             clk_state = clk.is_pressed
 
             # Detect any edge on CLK (state change)
             if clk_state != last_clk:
-                # Direction depends on DT state relative to CLK transition
-                # Falling edge (CLK went low): DT high = CW
-                # Rising edge (CLK went high): DT low = CW
-                if clk_state:
-                    # Rising edge
-                    if not dt.is_pressed:
-                        on_rotate_clockwise()
-                    else:
-                        on_rotate_counter_clockwise()
-                else:
-                    # Falling edge
-                    if dt.is_pressed:
-                        on_rotate_clockwise()
-                    else:
-                        on_rotate_counter_clockwise()
-
+                edge_count += 1
                 last_clk = clk_state
+
+                # Only fire on every other edge (encoder has 2 edges per detent)
+                if edge_count % 2 == 0:
+                    # Determine direction from DT state
+                    if clk_state == dt.is_pressed:
+                        on_rotate_clockwise()
+                    else:
+                        on_rotate_counter_clockwise()
 
             # Check for idle timeout
             if screen_is_on and (time.time() - last_activity_time > IDLE_TIMEOUT):
