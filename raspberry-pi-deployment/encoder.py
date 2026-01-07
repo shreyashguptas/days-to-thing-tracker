@@ -37,10 +37,17 @@ BUTTON_DEBOUNCE = 0.2     # seconds
 # Long press threshold
 LONG_PRESS_TIME = 0.5  # seconds - hold longer than this for Escape
 
+# Idle timeout for screen power saving
+IDLE_TIMEOUT = 300  # 5 minutes in seconds
+
 # Track last action time for debouncing
 last_rotation_time = 0
 last_button_time = 0
 button_press_time = 0  # Track when button was pressed
+
+# Idle timeout state
+last_activity_time = 0  # Will be initialized in main()
+screen_is_on = True
 
 
 def send_key(key: str) -> None:
@@ -58,12 +65,52 @@ def send_key(key: str) -> None:
         print("Error: xdotool not installed. Run: sudo apt install xdotool")
 
 
+def screen_off() -> None:
+    """Turn off the display using DPMS."""
+    global screen_is_on
+    if screen_is_on:
+        try:
+            subprocess.run(
+                ["xset", "-display", ":0", "dpms", "force", "off"],
+                check=True,
+                capture_output=True
+            )
+            screen_is_on = False
+            print("Screen turned OFF (idle timeout)")
+        except subprocess.CalledProcessError as e:
+            print(f"Error turning screen off: {e}")
+
+
+def screen_on() -> None:
+    """Turn on the display using DPMS."""
+    global screen_is_on
+    if not screen_is_on:
+        try:
+            subprocess.run(
+                ["xset", "-display", ":0", "dpms", "force", "on"],
+                check=True,
+                capture_output=True
+            )
+            screen_is_on = True
+            print("Screen turned ON (user activity)")
+        except subprocess.CalledProcessError as e:
+            print(f"Error turning screen on: {e}")
+
+
+def record_activity() -> None:
+    """Record user activity and wake screen if needed."""
+    global last_activity_time
+    last_activity_time = time.time()
+    screen_on()
+
+
 def on_rotate_clockwise() -> None:
     """Handle clockwise rotation - scroll down."""
     global last_rotation_time
     now = time.time()
     if now - last_rotation_time > ROTATION_DEBOUNCE:
         last_rotation_time = now
+        record_activity()
         print("Clockwise -> Down")
         send_key("Down")
 
@@ -74,6 +121,7 @@ def on_rotate_counter_clockwise() -> None:
     now = time.time()
     if now - last_rotation_time > ROTATION_DEBOUNCE:
         last_rotation_time = now
+        record_activity()
         print("Counter-clockwise -> Up")
         send_key("Up")
 
@@ -81,6 +129,7 @@ def on_rotate_counter_clockwise() -> None:
 def on_button_pressed() -> None:
     """Handle button press start - record time."""
     global button_press_time
+    record_activity()
     button_press_time = time.time()
 
 
@@ -119,8 +168,13 @@ def main() -> None:
     print("  Short press    -> Enter (select)")
     print(f"  Long press (>{LONG_PRESS_TIME}s) -> Escape (back)")
     print("")
+    print(f"Screen will turn off after {IDLE_TIMEOUT}s of inactivity")
     print("Press Ctrl+C to exit")
     print("")
+
+    # Initialize idle timeout tracking
+    global last_activity_time
+    last_activity_time = time.time()
 
     # Set up rotary encoder
     # Note: gpiozero's RotaryEncoder handles the quadrature decoding
@@ -145,6 +199,11 @@ def main() -> None:
             elif current_steps < last_steps:
                 on_rotate_counter_clockwise()
             last_steps = current_steps
+
+            # Check for idle timeout
+            if screen_is_on and (time.time() - last_activity_time > IDLE_TIMEOUT):
+                screen_off()
+
             time.sleep(0.01)  # 10ms polling interval
     except KeyboardInterrupt:
         print("\nShutting down...")
