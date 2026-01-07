@@ -5,6 +5,7 @@ setup.py - Setup and deploy Days to Thing Tracker
 Usage:
     python setup.py              # Show deployment menu
     python setup.py --init       # First-time setup
+    python setup.py --kiosk      # Kiosk setup (Raspberry Pi display)
 """
 
 import os
@@ -18,6 +19,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.absolute()
 ENV_FILE = PROJECT_ROOT / ".env"
 DOCKER_STATE_DIR = PROJECT_ROOT / ".docker" / "tailscale" / "state"
+KIOSK_DEPLOYMENT_DIR = PROJECT_ROOT / "raspberry-pi-deployment"
+
+# Kiosk configuration
+KIOSK_URL = "https://days-tracker-server-deployment.reverse-python.ts.net/?kiosk=true"
+PI_USER_HOME = Path("/home/shreyash")
 
 
 def has_npm() -> bool:
@@ -355,9 +361,360 @@ def reset_tailscale():
     print("\nTailscale reset complete!")
 
 
+# =============================================================================
+# KIOSK SETUP FUNCTIONS (Raspberry Pi Display)
+# =============================================================================
+
+def is_raspberry_pi() -> bool:
+    """Check if running on a Raspberry Pi."""
+    try:
+        with open("/proc/cpuinfo", "r") as f:
+            return "Raspberry Pi" in f.read() or "BCM" in f.read()
+    except:
+        return False
+
+
+def detect_chromium_package() -> str:
+    """Detect the correct Chromium package name."""
+    result = subprocess.run(
+        ["apt-cache", "show", "chromium"],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        return "chromium"
+
+    result = subprocess.run(
+        ["apt-cache", "show", "chromium-browser"],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        return "chromium-browser"
+
+    return ""
+
+
+def kiosk_install_dependencies() -> bool:
+    """Install kiosk dependencies (apt packages)."""
+    print("\n[1/4] Installing dependencies...")
+
+    chromium_pkg = detect_chromium_package()
+    if not chromium_pkg:
+        print("Error: Could not find chromium or chromium-browser package")
+        return False
+
+    print(f"Detected Chromium package: {chromium_pkg}")
+
+    # Update apt
+    if not run(["sudo", "apt", "update"]):
+        print("apt update failed!")
+        return False
+
+    # Build tools
+    print("\nInstalling build tools...")
+    if not run(["sudo", "apt", "install", "-y", "cmake", "git", "build-essential"]):
+        return False
+
+    # X server and browser
+    print("\nInstalling X server, browser, and utilities...")
+    packages = [
+        "xserver-xorg", "xinit", "x11-xserver-utils",
+        chromium_pkg, "unclutter", "xdotool"
+    ]
+    if not run(["sudo", "apt", "install", "-y"] + packages):
+        return False
+
+    # Python dependencies for encoder
+    print("\nInstalling Python dependencies...")
+    if not run(["sudo", "apt", "install", "-y", "python3-pip", "python3-gpiozero", "python3-lgpio"]):
+        return False
+
+    print("\nDependencies installed!")
+    return True
+
+
+def kiosk_install_scripts() -> bool:
+    """Copy kiosk scripts to Pi home directory."""
+    print("\n[2/4] Installing kiosk scripts...")
+
+    # Check if deployment files exist
+    kiosk_sh = KIOSK_DEPLOYMENT_DIR / "kiosk.sh"
+    encoder_py = KIOSK_DEPLOYMENT_DIR / "encoder.py"
+    fbdev_conf = KIOSK_DEPLOYMENT_DIR / "99-fbdev.conf"
+
+    if not kiosk_sh.exists():
+        print(f"Error: {kiosk_sh} not found!")
+        print("Make sure you're running this from the project directory.")
+        return False
+
+    # Copy kiosk script
+    dest_kiosk = PI_USER_HOME / "kiosk.sh"
+    shutil.copy(kiosk_sh, dest_kiosk)
+    os.chmod(dest_kiosk, 0o755)
+    print(f"  Copied kiosk.sh to {dest_kiosk}")
+
+    # Copy encoder script
+    if encoder_py.exists():
+        dest_encoder = PI_USER_HOME / "encoder.py"
+        shutil.copy(encoder_py, dest_encoder)
+        os.chmod(dest_encoder, 0o755)
+        print(f"  Copied encoder.py to {dest_encoder}")
+
+    # Set ownership
+    user = os.environ.get("USER", "shreyash")
+    run(["sudo", "chown", f"{user}:{user}", str(dest_kiosk)], show_output=False)
+    if (PI_USER_HOME / "encoder.py").exists():
+        run(["sudo", "chown", f"{user}:{user}", str(PI_USER_HOME / "encoder.py")], show_output=False)
+
+    # Configure Chromium for low-memory kiosk mode
+    print("  Configuring Chromium for low-memory kiosk mode...")
+    run(["sudo", "mkdir", "-p", "/etc/chromium.d"], show_output=False)
+    chromium_conf = "# Skip low memory warning for kiosk mode\nexport SKIP_MEMCHECK=1\n"
+    subprocess.run(
+        ["sudo", "tee", "/etc/chromium.d/99-kiosk"],
+        input=chromium_conf, text=True, capture_output=True
+    )
+
+    # Configure X11 for TFT framebuffer
+    print("  Configuring X11 for TFT framebuffer...")
+    run(["sudo", "mkdir", "-p", "/etc/X11/xorg.conf.d"], show_output=False)
+    if fbdev_conf.exists():
+        run(["sudo", "cp", str(fbdev_conf), "/etc/X11/xorg.conf.d/"], show_output=False)
+
+    print("Scripts installed!")
+    return True
+
+
+def kiosk_install_services() -> bool:
+    """Install and enable systemd services."""
+    print("\n[3/4] Installing systemd services...")
+
+    kiosk_service = KIOSK_DEPLOYMENT_DIR / "kiosk.service"
+    encoder_service = KIOSK_DEPLOYMENT_DIR / "encoder.service"
+
+    if not kiosk_service.exists():
+        print(f"Error: {kiosk_service} not found!")
+        return False
+
+    # Copy service files
+    run(["sudo", "cp", str(kiosk_service), "/etc/systemd/system/"], show_output=False)
+    print("  Copied kiosk.service")
+
+    if encoder_service.exists():
+        run(["sudo", "cp", str(encoder_service), "/etc/systemd/system/"], show_output=False)
+        print("  Copied encoder.service")
+
+    # Reload systemd
+    run(["sudo", "systemctl", "daemon-reload"], show_output=False)
+
+    # Enable services
+    run(["sudo", "systemctl", "enable", "kiosk.service"], show_output=False)
+    print("  Enabled kiosk.service")
+
+    if encoder_service.exists():
+        run(["sudo", "systemctl", "enable", "encoder.service"], show_output=False)
+        print("  Enabled encoder.service")
+
+    print("Services installed and enabled!")
+    return True
+
+
+def kiosk_test_connectivity() -> bool:
+    """Test Tailscale connectivity to server."""
+    print("\n[4/4] Testing connectivity...")
+
+    # Check Tailscale status
+    if shutil.which("tailscale"):
+        print("\nTailscale status:")
+        run(["tailscale", "status"])
+    else:
+        print("Warning: Tailscale not found")
+
+    # Test URL
+    print(f"\nTesting connection to: {KIOSK_URL}")
+    result = subprocess.run(
+        ["curl", "-s", "--max-time", "10", "-I", KIOSK_URL],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0 and "200" in result.stdout:
+        print("Connection successful!")
+        return True
+    else:
+        print("Warning: Could not reach server")
+        print("Make sure Tailscale is connected and the server is running.")
+        return False
+
+
+def kiosk_show_config_instructions():
+    """Show manual config.txt instructions."""
+    print_header("Manual Configuration Required")
+
+    print("Before running the automated setup, you need to edit /boot/firmware/config.txt")
+    print("to configure the TFT display driver.\n")
+
+    print("1. Open config.txt:")
+    print("   sudo nano /boot/firmware/config.txt\n")
+
+    print("2. REMOVE these lines (if present):")
+    print("   dtoverlay=st7735r,dc_pin=25,reset_pin=24,speed=32000000,width=128,height=160")
+    print("   gpio=18=op,dh\n")
+
+    print("3. ADD these lines at the end:\n")
+    print("   # ST7735 TFT Display")
+    print("   dtoverlay=adafruit18,rotate=270,speed=32000000,dc_pin=25,reset_pin=24,led_pin=18")
+    print()
+    print("   # Framebuffer settings for kiosk")
+    print("   hdmi_force_hotplug=1")
+    print("   hdmi_cvt=160 128 60 1 0 0 0")
+    print("   hdmi_group=2")
+    print("   hdmi_mode=87")
+    print("   framebuffer_width=160")
+    print("   framebuffer_height=128\n")
+
+    print("4. Save the file (Ctrl+O, Enter, Ctrl+X)\n")
+
+    print("5. Reboot the Pi:")
+    print("   sudo reboot\n")
+
+    print("-" * 50)
+    print("After rebooting, verify the display driver loaded:")
+    print("   ls -la /dev/fb*")
+    print("   (Should show fb0)")
+    print("-" * 50)
+
+
+def kiosk_setup_phase1():
+    """Kiosk setup Phase 1: Show config instructions."""
+    print_header("Kiosk Setup - Phase 1: Display Configuration")
+
+    kiosk_show_config_instructions()
+
+    print("\nOnce you have:")
+    print("  1. Edited /boot/firmware/config.txt with the lines above")
+    print("  2. Rebooted the Pi")
+    print("  3. Verified /dev/fb0 exists")
+    print()
+    print("Run this setup again and select 'Phase 2' to continue.\n")
+
+
+def kiosk_setup_phase2():
+    """Kiosk setup Phase 2: Install software."""
+    print_header("Kiosk Setup - Phase 2: Software Installation")
+
+    # Verify we're on a Pi (or at least Linux)
+    if sys.platform != "linux":
+        print("Error: This must be run on the Raspberry Pi, not your development machine.")
+        print(f"Current platform: {sys.platform}")
+        return
+
+    # Check framebuffer exists
+    if not Path("/dev/fb0").exists():
+        print("Warning: /dev/fb0 not found!")
+        print("Did you complete Phase 1 and reboot?")
+        confirm = input("\nContinue anyway? [y/N]: ").strip().lower()
+        if confirm != "y":
+            print("Cancelled. Complete Phase 1 first.")
+            return
+
+    print("This will:")
+    print("  1. Install packages (X server, Chromium, xdotool, etc.)")
+    print("  2. Copy kiosk and encoder scripts")
+    print("  3. Install and enable systemd services")
+    print("  4. Test connectivity to server")
+    print()
+
+    confirm = input("Continue? [y/N]: ").strip().lower()
+    if confirm != "y":
+        print("Cancelled.")
+        return
+
+    # Run installation steps
+    if not kiosk_install_dependencies():
+        print("\nDependency installation failed!")
+        return
+
+    if not kiosk_install_scripts():
+        print("\nScript installation failed!")
+        return
+
+    if not kiosk_install_services():
+        print("\nService installation failed!")
+        return
+
+    kiosk_test_connectivity()
+
+    # Done!
+    print_header("Kiosk Setup Complete!")
+    print("The kiosk will start automatically on next reboot.\n")
+    print("To start now without rebooting:")
+    print("  sudo systemctl start kiosk")
+    print("  sudo systemctl start encoder\n")
+    print("To check status:")
+    print("  sudo systemctl status kiosk")
+    print("  sudo systemctl status encoder\n")
+    print("To view logs:")
+    print("  journalctl -u kiosk -f")
+    print("  journalctl -u encoder -f\n")
+
+    reboot = input("Reboot now? [y/N]: ").strip().lower()
+    if reboot == "y":
+        run(["sudo", "reboot"])
+
+
+def kiosk_menu():
+    """Show kiosk setup menu."""
+    print_header("Kiosk Setup (Raspberry Pi Display)")
+
+    print("Setup your Raspberry Pi as a kiosk display.\n")
+    print("The setup has two phases:\n")
+    print("  Phase 1: Configure the display driver (manual config.txt edit + reboot)")
+    print("  Phase 2: Install software (automated)\n")
+    print("-" * 50)
+    print()
+    print("  1. Phase 1 - Show config.txt instructions")
+    print("  2. Phase 2 - Install kiosk software (run after Phase 1 + reboot)")
+    print()
+    print("  3. Test connectivity only")
+    print("  4. Start/restart kiosk services")
+    print("  5. Stop kiosk services")
+    print("  6. View kiosk logs")
+    print()
+    print("  0. Back to main menu")
+    print()
+
+    choice = input("Choose [1-6, 0]: ").strip()
+
+    if choice == "1":
+        kiosk_setup_phase1()
+    elif choice == "2":
+        kiosk_setup_phase2()
+    elif choice == "3":
+        kiosk_test_connectivity()
+    elif choice == "4":
+        print("\nStarting kiosk services...")
+        run(["sudo", "systemctl", "restart", "kiosk"])
+        run(["sudo", "systemctl", "restart", "encoder"])
+        print("Services started.")
+    elif choice == "5":
+        print("\nStopping kiosk services...")
+        run(["sudo", "systemctl", "stop", "kiosk"])
+        run(["sudo", "systemctl", "stop", "encoder"])
+        print("Services stopped.")
+    elif choice == "6":
+        print("\nShowing kiosk logs (Ctrl+C to exit)...")
+        run(["journalctl", "-u", "kiosk", "-u", "encoder", "-f", "--lines=50"])
+    elif choice == "0":
+        return
+    else:
+        print("Invalid choice.")
+
+
+# =============================================================================
+# SERVER SETUP FUNCTIONS
+# =============================================================================
+
 def first_time_setup():
     """First-time setup wizard."""
-    print_header("First-Time Setup")
+    print_header("First-Time Setup (Server)")
 
     # Create Tailscale state directory (data is handled by Docker volume)
     DOCKER_STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -395,9 +752,9 @@ def first_time_setup():
     print("\nRun 'python setup.py' again to see deployment options.")
 
 
-def main_menu():
-    """Show main deployment menu."""
-    print_header("Days to Thing Tracker - Deploy")
+def server_menu():
+    """Show server deployment menu."""
+    print_header("Server Deployment")
 
     print("Deployment options:\n")
     print("  1. Restart      - Quick restart                    [DATA SAFE]")
@@ -412,7 +769,7 @@ def main_menu():
     print("  9. Tailscale    - Configure Tailscale key/hostname")
     print("  r. Reset TS     - Clear Tailscale state & restart  [FIXES TLS ISSUES]")
     print()
-    print("  0. Exit")
+    print("  0. Back to main menu")
     print()
     print("-" * 50)
     print("  [DATA SAFE]       = Your tasks are safe")
@@ -432,7 +789,7 @@ def main_menu():
         "8": stop_containers,
         "9": configure_tailscale,
         "r": reset_tailscale,
-        "0": lambda: sys.exit(0),
+        "0": lambda: None,  # Return to main menu
     }
 
     action = actions.get(choice)
@@ -442,14 +799,43 @@ def main_menu():
         print("Invalid choice.")
 
 
+def main_menu():
+    """Show top-level menu: Server or Kiosk."""
+    while True:
+        print_header("Days to Thing Tracker - Setup")
+
+        print("What would you like to set up?\n")
+        print("  1. Server  - Deploy/manage the Docker server")
+        print("  2. Kiosk   - Set up Raspberry Pi display client")
+        print()
+        print("  0. Exit")
+        print()
+
+        choice = input("Choose [1-2, 0]: ").strip()
+
+        if choice == "1":
+            server_menu()
+        elif choice == "2":
+            kiosk_menu()
+        elif choice == "0":
+            sys.exit(0)
+        else:
+            print("Invalid choice.")
+
+
 def main():
     if "--init" in sys.argv:
         first_time_setup()
         return
 
+    if "--kiosk" in sys.argv:
+        kiosk_menu()
+        return
+
     # Check if first-time setup needed (only check .env, not node_modules)
-    if not ENV_FILE.exists():
-        print("\nFirst-time setup required.")
+    # Skip this check on Raspberry Pi (kiosk client doesn't need .env)
+    if not ENV_FILE.exists() and not is_raspberry_pi():
+        print("\nFirst-time server setup required.")
         confirm = input("Run setup now? [Y/n]: ").strip().lower()
         if confirm != "n":
             first_time_setup()
