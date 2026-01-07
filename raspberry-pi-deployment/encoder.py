@@ -32,8 +32,7 @@ PIN_DT = 27        # Encoder DT (B)
 PIN_SW = 22        # Encoder Switch (button)
 PIN_BACKLIGHT = 18 # Display backlight
 
-# Debounce settings
-ROTATION_DEBOUNCE = 0.02  # 20ms - snappy rotation response
+# Debounce settings (only for button, not rotation)
 BUTTON_DEBOUNCE = 0.2     # seconds
 
 # Long press threshold
@@ -43,7 +42,6 @@ LONG_PRESS_TIME = 0.5  # seconds - hold longer than this for Escape
 IDLE_TIMEOUT = 300  # 5 minutes in seconds
 
 # Track last action time for debouncing
-last_rotation_time = 0
 last_button_time = 0
 button_press_time = 0  # Track when button was pressed
 
@@ -112,24 +110,16 @@ def record_activity() -> None:
 
 def on_rotate_clockwise() -> None:
     """Handle clockwise rotation - scroll down."""
-    global last_rotation_time
-    now = time.time()
-    if now - last_rotation_time > ROTATION_DEBOUNCE:
-        last_rotation_time = now
-        record_activity()
-        print("Clockwise -> Down")
-        send_key("Down")
+    record_activity()
+    print("Clockwise -> Down")
+    send_key("Down")
 
 
 def on_rotate_counter_clockwise() -> None:
     """Handle counter-clockwise rotation - scroll up."""
-    global last_rotation_time
-    now = time.time()
-    if now - last_rotation_time > ROTATION_DEBOUNCE:
-        last_rotation_time = now
-        record_activity()
-        print("Counter-clockwise -> Up")
-        send_key("Up")
+    record_activity()
+    print("Counter-clockwise -> Up")
+    send_key("Up")
 
 
 def on_button_pressed() -> None:
@@ -219,7 +209,6 @@ def main() -> None:
 
     # Track CLK state for edge detection
     last_clk = clk.is_pressed
-    edge_count = 0  # Toggle to fire every other edge
 
     # Set up button with pull-up (button connects to GND when pressed)
     button = Button(PIN_SW, pull_up=True, bounce_time=0.05)
@@ -227,23 +216,23 @@ def main() -> None:
     button.when_released = on_button_released
 
     # Polling loop for encoder rotation
-    # Detects edges on CLK, fires every other edge for 1:1 detent mapping
+    # Detects falling edge on CLK (1 per detent) and reads DT for direction
     try:
         while True:
             clk_state = clk.is_pressed
 
-            # Detect any edge on CLK (state change)
-            if clk_state != last_clk:
-                edge_count += 1
-                last_clk = clk_state
+            # Detect falling edge: CLK was HIGH (False), now LOW (True)
+            # With pull_up=True: is_pressed=True means pin is LOW
+            if clk_state and not last_clk:
+                # At falling edge, check DT for direction
+                # DT HIGH (is_pressed=False) = clockwise
+                # DT LOW (is_pressed=True) = counter-clockwise
+                if not dt.is_pressed:
+                    on_rotate_clockwise()
+                else:
+                    on_rotate_counter_clockwise()
 
-                # Only fire on every other edge (encoder has 2 edges per detent)
-                if edge_count % 2 == 0:
-                    # Determine direction from DT state
-                    if clk_state == dt.is_pressed:
-                        on_rotate_clockwise()
-                    else:
-                        on_rotate_counter_clockwise()
+            last_clk = clk_state
 
             # Check for idle timeout
             if screen_is_on and (time.time() - last_activity_time > IDLE_TIMEOUT):
