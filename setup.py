@@ -283,6 +283,58 @@ def stop_containers():
     print("Containers stopped.")
 
 
+def reset_tailscale():
+    """Reset Tailscale - clear all state and reconfigure."""
+    print_header("Reset Tailscale")
+
+    print("This will:")
+    print("  1. Stop containers")
+    print("  2. Delete all Tailscale state")
+    print("  3. Require new auth key")
+    print("  4. Re-register with Tailscale")
+    print()
+    print("WARNING: You must also delete the OLD device from Tailscale admin console!")
+    print("         https://login.tailscale.com/admin/machines")
+    print()
+
+    confirm = input("Continue? [y/N]: ").strip().lower()
+    if confirm != "y":
+        print("Cancelled.")
+        return
+
+    # Stop containers
+    print("\nStopping containers...")
+    run(["docker", "compose", "down"])
+
+    # Clear Tailscale state
+    print("\nClearing Tailscale state...")
+    if DOCKER_STATE_DIR.exists():
+        shutil.rmtree(DOCKER_STATE_DIR)
+    DOCKER_STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Force new auth key
+    existing = read_env_file()
+    existing["TS_AUTHKEY"] = ""
+    save_env_file(existing)
+
+    print("\n" + "=" * 50)
+    print("IMPORTANT: Before continuing, delete the old device")
+    print("from your Tailscale admin console!")
+    print("https://login.tailscale.com/admin/machines")
+    print("=" * 50)
+    input("\nPress Enter when done...")
+
+    # Reconfigure
+    configure_tailscale()
+
+    # Restart
+    print("\nStarting containers...")
+    run(["docker", "compose", "up", "-d"])
+    configure_tailscale_serve()
+
+    print("\nTailscale reset complete!")
+
+
 def first_time_setup():
     """First-time setup wizard."""
     print_header("First-Time Setup")
@@ -337,7 +389,8 @@ def main_menu():
     print("  6. Status       - Show container status")
     print("  7. Logs         - Show container logs")
     print("  8. Stop         - Stop containers")
-    print("  9. Tailscale    - Configure Tailscale key")
+    print("  9. Tailscale    - Configure Tailscale key/hostname")
+    print("  r. Reset TS     - Clear Tailscale state & restart  [FIXES TLS ISSUES]")
     print()
     print("  0. Exit")
     print()
@@ -346,7 +399,7 @@ def main_menu():
     print("  [RUNS MIGRATIONS] = Runs DB migrations (usually safe)")
     print()
 
-    choice = input("Choose [1-9, 0]: ").strip()
+    choice = input("Choose [1-9, r, 0]: ").strip().lower()
 
     actions = {
         "1": deploy_restart,
@@ -358,6 +411,7 @@ def main_menu():
         "7": show_logs,
         "8": stop_containers,
         "9": configure_tailscale,
+        "r": reset_tailscale,
         "0": lambda: sys.exit(0),
     }
 
