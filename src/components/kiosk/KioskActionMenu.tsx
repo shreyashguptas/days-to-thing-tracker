@@ -14,6 +14,11 @@ const actionConfig: Record<TaskAction, { icon: string; label: string; className:
     label: 'DONE',
     className: 'kiosk-action-done',
   },
+  history: {
+    icon: '⏱',
+    label: 'HISTORY',
+    className: 'kiosk-action-history',
+  },
   delete: {
     icon: '✗',
     label: 'DELETE',
@@ -26,7 +31,7 @@ const actionConfig: Record<TaskAction, { icon: string; label: string; className:
   },
 };
 
-const actions: TaskAction[] = ['done', 'delete', 'back'];
+const actions: TaskAction[] = ['done', 'history', 'delete', 'back'];
 
 export function KioskActionMenu({
   taskName,

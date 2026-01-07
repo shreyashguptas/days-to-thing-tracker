@@ -8,11 +8,12 @@ export type KioskState =
   | 'TASK_LIST'      // Viewing tasks, rotate to change
   | 'TASK_ACTIONS'   // Viewing actions for selected task
   | 'DELETE_CONFIRM' // Confirming delete
-  | 'COMPLETING';    // Showing completion feedback
+  | 'COMPLETING'     // Showing completion feedback
+  | 'TASK_HISTORY';  // Viewing task completion history
 
 // Actions available for a task
-export type TaskAction = 'done' | 'delete' | 'back';
-const TASK_ACTIONS: TaskAction[] = ['done', 'delete', 'back'];
+export type TaskAction = 'done' | 'history' | 'delete' | 'back';
+const TASK_ACTIONS: TaskAction[] = ['done', 'history', 'delete', 'back'];
 
 // Delete confirmation options
 export type ConfirmOption = 'yes' | 'no';
@@ -32,6 +33,7 @@ interface UseKioskNavigationReturn {
   taskIndex: number;
   actionIndex: number;
   confirmIndex: number;
+  historyIndex: number;
 
   // Current selections
   currentTask: TaskWithDue | null;
@@ -43,6 +45,9 @@ interface UseKioskNavigationReturn {
   moveDown: () => void;
   select: () => void;
   back: () => void;
+
+  // History navigation
+  setHistoryLength: (length: number) => void;
 
   // State info
   isLoading: boolean;
@@ -61,6 +66,8 @@ export function useKioskNavigation({
   const [taskIndex, setTaskIndex] = useState(0);
   const [actionIndex, setActionIndex] = useState(0);
   const [confirmIndex, setConfirmIndex] = useState(1); // Default to "No"
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const [historyLength, setHistoryLength] = useState(0);
 
   // Loading and feedback
   const [isLoading, setIsLoading] = useState(false);
@@ -103,8 +110,13 @@ export function useKioskNavigation({
       case 'DELETE_CONFIRM':
         setConfirmIndex((prev) => (prev > 0 ? prev - 1 : CONFIRM_OPTIONS.length - 1));
         break;
+      case 'TASK_HISTORY':
+        if (historyLength > 0) {
+          setHistoryIndex((prev) => (prev > 0 ? prev - 1 : historyLength - 1));
+        }
+        break;
     }
-  }, [state, tasks.length]);
+  }, [state, tasks.length, historyLength]);
 
   // Move focus down (clockwise rotation)
   const moveDown = useCallback(() => {
@@ -118,8 +130,13 @@ export function useKioskNavigation({
       case 'DELETE_CONFIRM':
         setConfirmIndex((prev) => (prev < CONFIRM_OPTIONS.length - 1 ? prev + 1 : 0));
         break;
+      case 'TASK_HISTORY':
+        if (historyLength > 0) {
+          setHistoryIndex((prev) => (prev < historyLength - 1 ? prev + 1 : 0));
+        }
+        break;
     }
-  }, [state, tasks.length]);
+  }, [state, tasks.length, historyLength]);
 
   // Select current item (encoder press)
   const select = useCallback(async () => {
@@ -151,6 +168,11 @@ export function useKioskNavigation({
             }
             break;
 
+          case 'history':
+            setHistoryIndex(0);
+            setState('TASK_HISTORY');
+            break;
+
           case 'delete':
             setConfirmIndex(1); // Default to "No"
             setState('DELETE_CONFIRM');
@@ -160,6 +182,11 @@ export function useKioskNavigation({
             setState('TASK_LIST');
             break;
         }
+        break;
+
+      case 'TASK_HISTORY':
+        // Press in history view goes back to actions
+        setState('TASK_ACTIONS');
         break;
 
       case 'DELETE_CONFIRM':
@@ -193,6 +220,9 @@ export function useKioskNavigation({
         setState('TASK_LIST');
         break;
       case 'DELETE_CONFIRM':
+        setState('TASK_ACTIONS');
+        break;
+      case 'TASK_HISTORY':
         setState('TASK_ACTIONS');
         break;
       case 'COMPLETING':
@@ -236,6 +266,7 @@ export function useKioskNavigation({
     taskIndex,
     actionIndex,
     confirmIndex,
+    historyIndex,
     currentTask,
     currentAction,
     currentConfirm,
@@ -243,6 +274,7 @@ export function useKioskNavigation({
     moveDown,
     select,
     back,
+    setHistoryLength,
     isLoading,
     feedbackMessage,
   };

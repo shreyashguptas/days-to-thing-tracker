@@ -6,6 +6,7 @@ import { useKioskNavigation } from '@/hooks/useKioskNavigation';
 import { KioskTaskCard } from './KioskTaskCard';
 import { KioskActionMenu } from './KioskActionMenu';
 import { KioskConfirmDialog } from './KioskConfirmDialog';
+import { KioskHistoryView } from './KioskHistoryView';
 
 interface KioskViewProps {
   tasks: TasksResponse;
@@ -98,6 +99,18 @@ export function KioskView({ tasks, onComplete, onDelete }: KioskViewProps) {
           taskName={nav.currentTask!.name}
           selectedOption={nav.currentConfirm}
           isLoading={nav.isLoading}
+        />
+      );
+    }
+
+    // Task history
+    if (nav.state === 'TASK_HISTORY') {
+      return (
+        <KioskHistoryView
+          taskId={nav.currentTask!.id}
+          taskName={nav.currentTask!.name}
+          selectedIndex={nav.historyIndex}
+          onHistoryLoaded={nav.setHistoryLength}
         />
       );
     }
