@@ -81,36 +81,30 @@ install_dependencies() {
     echo -e "${GREEN}Dependencies installed!${NC}"
 }
 
-# Step 2: Build and install fbcp
+# Step 2: Check if fbcp is needed
 install_fbcp() {
-    echo -e "${GREEN}[2/6] Building fbcp (framebuffer copy)...${NC}"
+    echo -e "${GREEN}[2/6] Checking framebuffer configuration...${NC}"
 
-    if command -v fbcp &> /dev/null; then
-        echo "fbcp is already installed, skipping..."
+    # Check if TFT is already the primary framebuffer
+    FB0_NAME=$(cat /sys/class/graphics/fb0/name 2>/dev/null || echo "unknown")
+
+    if [[ "$FB0_NAME" == *"st7735"* ]] || [[ "$FB0_NAME" == *"fbtft"* ]]; then
+        echo "TFT display is primary framebuffer (fb0 = $FB0_NAME)"
+        echo "fbcp is NOT needed - X will render directly to TFT"
+        echo -e "${GREEN}Framebuffer configured correctly!${NC}"
         return
     fi
 
-    cd /tmp
+    # If there's a secondary framebuffer, we might need fbcp
+    if [[ -e /dev/fb1 ]]; then
+        echo "Secondary framebuffer detected - fbcp may be needed"
+        echo -e "${YELLOW}Note: fbcp requires libraspberrypi-dev which may not be available on Debian 13${NC}"
+        echo "Skipping fbcp build - will try without it first"
+    else
+        echo "Single framebuffer setup detected"
+    fi
 
-    # Clean up any previous attempts
-    rm -rf rpi-fbcp
-
-    # Clone and build
-    git clone https://github.com/tasanakorn/rpi-fbcp.git
-    cd rpi-fbcp
-    mkdir -p build
-    cd build
-    cmake ..
-    make
-
-    # Install
-    sudo install fbcp /usr/local/bin/
-
-    # Clean up
-    cd /tmp
-    rm -rf rpi-fbcp
-
-    echo -e "${GREEN}fbcp installed!${NC}"
+    echo -e "${GREEN}Framebuffer check complete!${NC}"
 }
 
 # Step 3: Copy scripts to home directory

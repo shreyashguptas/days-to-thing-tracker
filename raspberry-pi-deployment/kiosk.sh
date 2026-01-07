@@ -29,14 +29,14 @@ fi
 echo "Starting Raspberry Pi Kiosk..."
 echo "Target URL: $KIOSK_URL"
 
-# Start fbcp (framebuffer copy) in background
-# This mirrors fb0 to fb1 (the TFT display)
-if command -v fbcp &> /dev/null; then
-    echo "Starting fbcp..."
+# Check if fbcp is needed (only if TFT is secondary framebuffer)
+# On Debian 13 with fbtft, TFT is usually fb0 so fbcp isn't needed
+if [[ -e /dev/fb1 ]] && command -v fbcp &> /dev/null; then
+    echo "Starting fbcp (mirroring fb0 to fb1)..."
     /usr/local/bin/fbcp &
     sleep 1
 else
-    echo "WARNING: fbcp not found. Display mirroring will not work."
+    echo "TFT is primary framebuffer - fbcp not needed"
 fi
 
 # Disable screen blanking and power management
