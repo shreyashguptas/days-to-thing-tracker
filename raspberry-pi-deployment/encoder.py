@@ -15,9 +15,12 @@ GPIO Pin Configuration:
 - BL:      GPIO 18 (display backlight, controlled via sysfs)
 """
 
+import json
 import subprocess
 import sys
+import threading
 import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
 try:
@@ -49,6 +52,10 @@ button_press_time = 0  # Track when button was pressed
 last_activity_time = 0  # Will be initialized in main()
 screen_is_on = True
 backlight_path = None  # Path to sysfs backlight control (if available)
+
+# Settings server configuration
+SETTINGS_PORT = 8765
+screen_timeout_enabled = True  # Can be toggled via HTTP API
 
 
 def send_key(key: str) -> None:
@@ -151,6 +158,73 @@ def on_button_released() -> None:
         send_key("Return")
 
 
+class SettingsHandler(BaseHTTPRequestHandler):
+    """HTTP handler for settings API requests from the kiosk browser."""
+
+    def do_OPTIONS(self):
+        """Handle CORS preflight requests."""
+        self.send_response(200)
+        self._send_cors_headers()
+        self.end_headers()
+
+    def do_GET(self):
+        """Return current settings."""
+        if self.path == '/settings':
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            response = json.dumps({
+                'screenTimeoutEnabled': screen_timeout_enabled
+            })
+            self.wfile.write(response.encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        """Update settings."""
+        global screen_timeout_enabled
+        if self.path == '/settings':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+            try:
+                data = json.loads(body)
+                if 'screenTimeoutEnabled' in data:
+                    screen_timeout_enabled = bool(data['screenTimeoutEnabled'])
+                    print(f"Screen timeout {'enabled' if screen_timeout_enabled else 'disabled'}")
+
+                self.send_response(200)
+                self._send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                response = json.dumps({'success': True, 'screenTimeoutEnabled': screen_timeout_enabled})
+                self.wfile.write(response.encode())
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def _send_cors_headers(self):
+        """Send CORS headers for cross-origin access from kiosk."""
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+
+    def log_message(self, format, *args):
+        """Suppress HTTP request logging to keep console clean."""
+        pass
+
+
+def start_settings_server():
+    """Start HTTP settings server in background thread."""
+    server = HTTPServer(('127.0.0.1', SETTINGS_PORT), SettingsHandler)
+    print(f"Settings server listening on localhost:{SETTINGS_PORT}")
+    server.serve_forever()
+
+
 def find_backlight_control() -> str | None:
     """Find sysfs path for backlight control. Returns path or None."""
     # Check for standard backlight interface
@@ -202,6 +276,10 @@ def main() -> None:
     # Initialize idle timeout tracking
     last_activity_time = time.time()
 
+    # Start settings HTTP server in background thread
+    settings_thread = threading.Thread(target=start_settings_server, daemon=True)
+    settings_thread.start()
+
     # Set up encoder using raw edge detection (not RotaryEncoder)
     # This gives true 1:1 detent-to-event mapping
     clk = Button(PIN_CLK, pull_up=True)
@@ -234,8 +312,8 @@ def main() -> None:
 
             last_clk = clk_state
 
-            # Check for idle timeout
-            if screen_is_on and (time.time() - last_activity_time > IDLE_TIMEOUT):
+            # Check for idle timeout (only if screen timeout is enabled)
+            if screen_timeout_enabled and screen_is_on and (time.time() - last_activity_time > IDLE_TIMEOUT):
                 screen_off()
 
             time.sleep(0.001)  # 1ms polling for responsive encoder

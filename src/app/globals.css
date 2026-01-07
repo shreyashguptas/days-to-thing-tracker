@@ -592,3 +592,80 @@ body {
   font-size: 10px;
   color: var(--muted);
 }
+
+/* Settings View in Kiosk Mode */
+.kiosk-settings {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 6px;
+}
+
+.kiosk-settings-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--muted);
+}
+
+.kiosk-settings-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.kiosk-setting-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.kiosk-setting-selected {
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.kiosk-setting-disabled {
+  opacity: 0.4;
+}
+
+.kiosk-setting-indicator {
+  width: 10px;
+  font-size: 8px;
+  color: var(--foreground);
+}
+
+.kiosk-setting-icon {
+  width: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.kiosk-setting-label {
+  flex: 1;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.kiosk-setting-toggle {
+  font-size: 7px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 2px;
+}
+
+.kiosk-toggle-on {
+  background: #22c55e;
+  color: white;
+}
+
+.kiosk-toggle-off {
+  background: var(--muted);
+  color: white;
+}

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { TaskWithDue } from '@/types';
+import { getLocalSettings, updateLocalSettings } from '@/lib/kiosk-settings';
 
 // Kiosk navigation states
 export type KioskState =
@@ -9,7 +10,8 @@ export type KioskState =
   | 'TASK_ACTIONS'   // Viewing actions for selected task
   | 'DELETE_CONFIRM' // Confirming delete
   | 'COMPLETING'     // Showing completion feedback
-  | 'TASK_HISTORY';  // Viewing task completion history
+  | 'TASK_HISTORY'   // Viewing task completion history
+  | 'SETTINGS';      // Kiosk settings menu
 
 // Actions available for a task
 export type TaskAction = 'done' | 'history' | 'delete' | 'back';
@@ -18,6 +20,10 @@ const TASK_ACTIONS: TaskAction[] = ['done', 'history', 'delete', 'back'];
 // Delete confirmation options
 export type ConfirmOption = 'yes' | 'no';
 const CONFIRM_OPTIONS: ConfirmOption[] = ['yes', 'no'];
+
+// Settings menu items
+export type SettingItem = 'screen_timeout' | 'back';
+const SETTINGS_ITEMS: SettingItem[] = ['screen_timeout', 'back'];
 
 interface UseKioskNavigationProps {
   tasks: TaskWithDue[];
@@ -34,11 +40,16 @@ interface UseKioskNavigationReturn {
   actionIndex: number;
   confirmIndex: number;
   historyIndex: number;
+  settingIndex: number;
 
   // Current selections
   currentTask: TaskWithDue | null;
   currentAction: TaskAction;
   currentConfirm: ConfirmOption;
+  currentSetting: SettingItem;
+
+  // Settings state
+  screenTimeoutEnabled: boolean;
 
   // Navigation functions
   moveUp: () => void;
@@ -68,10 +79,21 @@ export function useKioskNavigation({
   const [confirmIndex, setConfirmIndex] = useState(1); // Default to "No"
   const [historyIndex, setHistoryIndex] = useState(0);
   const [historyLength, setHistoryLength] = useState(0);
+  const [settingIndex, setSettingIndex] = useState(0);
+
+  // Settings state
+  const [screenTimeoutEnabled, setScreenTimeoutEnabled] = useState(true);
 
   // Loading and feedback
   const [isLoading, setIsLoading] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+
+  // Fetch settings from local encoder.py server on mount
+  useEffect(() => {
+    getLocalSettings().then((settings) => {
+      setScreenTimeoutEnabled(settings.screenTimeoutEnabled);
+    });
+  }, []);
 
   // Ensure taskIndex is valid when tasks change
   useEffect(() => {
@@ -97,6 +119,7 @@ export function useKioskNavigation({
   const currentTask = tasks.length > 0 ? tasks[taskIndex] : null;
   const currentAction = TASK_ACTIONS[actionIndex];
   const currentConfirm = CONFIRM_OPTIONS[confirmIndex];
+  const currentSetting = SETTINGS_ITEMS[settingIndex];
 
   // Move focus up (counter-clockwise rotation)
   const moveUp = useCallback(() => {
@@ -114,6 +137,9 @@ export function useKioskNavigation({
         if (historyLength > 0) {
           setHistoryIndex((prev) => (prev > 0 ? prev - 1 : historyLength - 1));
         }
+        break;
+      case 'SETTINGS':
+        setSettingIndex((prev) => (prev > 0 ? prev - 1 : SETTINGS_ITEMS.length - 1));
         break;
     }
   }, [state, tasks.length, historyLength]);
@@ -134,6 +160,9 @@ export function useKioskNavigation({
         if (historyLength > 0) {
           setHistoryIndex((prev) => (prev < historyLength - 1 ? prev + 1 : 0));
         }
+        break;
+      case 'SETTINGS':
+        setSettingIndex((prev) => (prev < SETTINGS_ITEMS.length - 1 ? prev + 1 : 0));
         break;
     }
   }, [state, tasks.length, historyLength]);
@@ -189,6 +218,20 @@ export function useKioskNavigation({
         setState('TASK_ACTIONS');
         break;
 
+      case 'SETTINGS':
+        switch (currentSetting) {
+          case 'screen_timeout':
+            // Toggle screen timeout setting
+            const newValue = !screenTimeoutEnabled;
+            setScreenTimeoutEnabled(newValue);
+            updateLocalSettings({ screenTimeoutEnabled: newValue });
+            break;
+          case 'back':
+            setState('TASK_LIST');
+            break;
+        }
+        break;
+
       case 'DELETE_CONFIRM':
         if (!currentTask) return;
 
@@ -211,11 +254,16 @@ export function useKioskNavigation({
         }
         break;
     }
-  }, [state, currentTask, currentAction, currentConfirm, isLoading, onComplete, onDelete, taskIndex, tasks.length]);
+  }, [state, currentTask, currentAction, currentConfirm, currentSetting, screenTimeoutEnabled, isLoading, onComplete, onDelete, taskIndex, tasks.length]);
 
   // Go back (long press / escape)
   const back = useCallback(() => {
     switch (state) {
+      case 'TASK_LIST':
+        // Long press on task list opens settings
+        setSettingIndex(0);
+        setState('SETTINGS');
+        break;
       case 'TASK_ACTIONS':
         setState('TASK_LIST');
         break;
@@ -225,11 +273,11 @@ export function useKioskNavigation({
       case 'TASK_HISTORY':
         setState('TASK_ACTIONS');
         break;
+      case 'SETTINGS':
+        setState('TASK_LIST');
+        break;
       case 'COMPLETING':
         // Can't interrupt completion
-        break;
-      default:
-        // Already at top level
         break;
     }
   }, [state]);
@@ -267,9 +315,12 @@ export function useKioskNavigation({
     actionIndex,
     confirmIndex,
     historyIndex,
+    settingIndex,
     currentTask,
     currentAction,
     currentConfirm,
+    currentSetting,
+    screenTimeoutEnabled,
     moveUp,
     moveDown,
     select,

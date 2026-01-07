@@ -7,6 +7,7 @@ import { KioskTaskCard } from './KioskTaskCard';
 import { KioskActionMenu } from './KioskActionMenu';
 import { KioskConfirmDialog } from './KioskConfirmDialog';
 import { KioskHistoryView } from './KioskHistoryView';
+import { KioskSettingsMenu } from './KioskSettingsMenu';
 
 interface KioskViewProps {
   tasks: TasksResponse;
@@ -111,6 +112,17 @@ export function KioskView({ tasks, onComplete, onDelete }: KioskViewProps) {
           taskName={nav.currentTask!.name}
           selectedIndex={nav.historyIndex}
           onHistoryLoaded={nav.setHistoryLength}
+        />
+      );
+    }
+
+    // Settings menu
+    if (nav.state === 'SETTINGS') {
+      return (
+        <KioskSettingsMenu
+          selectedSetting={nav.currentSetting}
+          screenTimeoutEnabled={nav.screenTimeoutEnabled}
+          isLoading={nav.isLoading}
         />
       );
     }
