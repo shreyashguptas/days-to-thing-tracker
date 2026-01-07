@@ -15,6 +15,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER_HOME="/home/shreyash"
 KIOSK_URL="https://days-tracker-server-deployment.reverse-python.ts.net/"
 
+# Detect Chromium package name based on OS
+# - Debian 12+ (bookworm, trixie): chromium
+# - Older Debian/Raspbian/Ubuntu: chromium-browser
+detect_chromium_package() {
+    if apt-cache show chromium &>/dev/null; then
+        echo "chromium"
+    elif apt-cache show chromium-browser &>/dev/null; then
+        echo "chromium-browser"
+    else
+        echo ""
+    fi
+}
+
+CHROMIUM_PACKAGE=$(detect_chromium_package)
+
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Raspberry Pi Kiosk Installer${NC}"
 echo -e "${GREEN}========================================${NC}"
@@ -33,6 +48,18 @@ install_dependencies() {
 
     sudo apt update
 
+    # Detect chromium package if not already detected
+    if [[ -z "$CHROMIUM_PACKAGE" ]]; then
+        CHROMIUM_PACKAGE=$(detect_chromium_package)
+    fi
+
+    if [[ -z "$CHROMIUM_PACKAGE" ]]; then
+        echo -e "${RED}Error: Could not find chromium or chromium-browser package${NC}"
+        exit 1
+    fi
+
+    echo "Detected Chromium package: $CHROMIUM_PACKAGE"
+
     # Build tools for fbcp
     sudo apt install -y cmake git build-essential
 
@@ -41,7 +68,7 @@ install_dependencies() {
         xserver-xorg \
         xinit \
         x11-xserver-utils \
-        chromium-browser \
+        "$CHROMIUM_PACKAGE" \
         unclutter \
         xdotool
 

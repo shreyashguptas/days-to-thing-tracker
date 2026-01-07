@@ -9,6 +9,23 @@ KIOSK_URL="${KIOSK_URL:-https://days-tracker-server-deployment.reverse-python.ts
 DISPLAY_WIDTH=160
 DISPLAY_HEIGHT=128
 
+# Detect Chromium binary (chromium on Debian 12+, chromium-browser on older)
+detect_chromium_binary() {
+    if command -v chromium &> /dev/null; then
+        echo "chromium"
+    elif command -v chromium-browser &> /dev/null; then
+        echo "chromium-browser"
+    else
+        echo ""
+    fi
+}
+
+CHROMIUM_BIN=$(detect_chromium_binary)
+if [[ -z "$CHROMIUM_BIN" ]]; then
+    echo "ERROR: Chromium not found. Please install chromium or chromium-browser."
+    exit 1
+fi
+
 echo "Starting Raspberry Pi Kiosk..."
 echo "Target URL: $KIOSK_URL"
 
@@ -46,8 +63,8 @@ for i in {1..30}; do
 done
 
 # Launch Chromium in kiosk mode
-echo "Launching Chromium..."
-exec chromium-browser \
+echo "Launching Chromium ($CHROMIUM_BIN)..."
+exec "$CHROMIUM_BIN" \
     --kiosk \
     --noerrdialogs \
     --disable-infobars \
