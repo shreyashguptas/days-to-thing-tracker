@@ -801,26 +801,25 @@ def server_menu():
 
 def main_menu():
     """Show top-level menu: Server or Kiosk."""
-    while True:
-        print_header("Days to Thing Tracker - Setup")
+    print_header("Days to Thing Tracker - Setup")
 
-        print("What would you like to set up?\n")
-        print("  1. Server  - Deploy/manage the Docker server")
-        print("  2. Kiosk   - Set up Raspberry Pi display client")
-        print()
-        print("  0. Exit")
-        print()
+    print("What would you like to set up?\n")
+    print("  1. Server  - Deploy/manage the Docker server")
+    print("  2. Kiosk   - Set up Raspberry Pi display client")
+    print()
+    print("  0. Exit")
+    print()
 
-        choice = input("Choose [1-2, 0]: ").strip()
+    choice = input("Choose [1-2, 0]: ").strip()
 
-        if choice == "1":
-            server_menu()
-        elif choice == "2":
-            kiosk_menu()
-        elif choice == "0":
-            sys.exit(0)
-        else:
-            print("Invalid choice.")
+    if choice == "1":
+        server_menu()
+    elif choice == "2":
+        kiosk_menu()
+    elif choice == "0":
+        pass
+    else:
+        print("Invalid choice.")
 
 
 def main():
