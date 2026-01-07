@@ -9,7 +9,22 @@ interface KioskTaskCardProps {
 }
 
 export function KioskTaskCard({ task, index, total }: KioskTaskCardProps) {
-  const { name, daysUntilDue, urgency } = task;
+  const { name, daysUntilDue, urgency, nextDueDate } = task;
+
+  // Format the due date for display
+  const formatDueDate = () => {
+    const date = new Date(nextDueDate);
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const day = date.getDate();
+    const year = date.getFullYear();
+    const currentYear = new Date().getFullYear();
+
+    // Only show year if different from current year
+    if (year !== currentYear) {
+      return `${month} ${day}, ${year}`;
+    }
+    return `${month} ${day}`;
+  };
 
   // Urgency-based styling
   const urgencyConfig = {
@@ -66,6 +81,7 @@ export function KioskTaskCard({ task, index, total }: KioskTaskCardProps) {
       <div className={`kiosk-day-count ${config.countClass}`}>
         <span className="kiosk-day-number">{dayDisplay.number}</span>
         <span className="kiosk-day-label">{dayDisplay.label}</span>
+        <span className="kiosk-due-date">{formatDueDate()}</span>
       </div>
 
       {/* Navigation hint */}
