@@ -226,20 +226,30 @@ def main() -> None:
     button.when_released = on_button_released
 
     # Polling loop for encoder rotation
-    # Detects CLK edges and reads DT to determine direction
+    # Detects ANY edge on CLK and reads DT to determine direction
     try:
         while True:
             clk_state = clk.is_pressed
 
-            # Detect falling edge on CLK (1 -> 0)
-            if last_clk and not clk_state:
-                # Read DT to determine direction
-                if dt.is_pressed:
-                    on_rotate_clockwise()
+            # Detect any edge on CLK (state change)
+            if clk_state != last_clk:
+                # Direction depends on DT state relative to CLK transition
+                # Falling edge (CLK went low): DT high = CW
+                # Rising edge (CLK went high): DT low = CW
+                if clk_state:
+                    # Rising edge
+                    if not dt.is_pressed:
+                        on_rotate_clockwise()
+                    else:
+                        on_rotate_counter_clockwise()
                 else:
-                    on_rotate_counter_clockwise()
+                    # Falling edge
+                    if dt.is_pressed:
+                        on_rotate_clockwise()
+                    else:
+                        on_rotate_counter_clockwise()
 
-            last_clk = clk_state
+                last_clk = clk_state
 
             # Check for idle timeout
             if screen_is_on and (time.time() - last_activity_time > IDLE_TIMEOUT):
