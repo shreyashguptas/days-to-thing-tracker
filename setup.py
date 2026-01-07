@@ -80,6 +80,13 @@ def configure_tailscale_serve():
         )
         if result.returncode == 0 and "100." in result.stdout:
             break
+        # Check if needs approval
+        if "not yet approved" in result.stderr.lower():
+            print("\nMachine needs approval in Tailscale admin console.")
+            print("Go to: https://login.tailscale.com/admin/machines")
+            print("Find the new device and approve it.")
+            input("\nPress Enter after approving...")
+            continue
         time.sleep(1)
     else:
         print("Warning: Tailscale may not be connected yet")
@@ -91,7 +98,20 @@ def configure_tailscale_serve():
         capture_output=True, text=True
     )
 
-    if result.returncode == 0:
+    # Check if needs approval (serve command can also fail for this)
+    if "not yet approved" in result.stderr.lower():
+        print("\nMachine needs approval in Tailscale admin console.")
+        print("Go to: https://login.tailscale.com/admin/machines")
+        print("Find the new device and approve it.")
+        input("\nPress Enter after approving...")
+        # Retry
+        result = subprocess.run(
+            ["docker", "exec", "days-tracker-tailscale",
+             "tailscale", "serve", "--bg", "--https=443", "http://127.0.0.1:3000"],
+            capture_output=True, text=True
+        )
+
+    if result.returncode == 0 or "already" in result.stderr.lower():
         # Get the serve status to show the URL
         status = subprocess.run(
             ["docker", "exec", "days-tracker-tailscale", "tailscale", "serve", "status"],
