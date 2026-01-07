@@ -12,7 +12,7 @@ Group=shreyash
 # Environment
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/shreyash/.Xauthority
-Environment=KIOSK_URL=https://days-tracker-server-deployment.reverse-python.ts.net/
+Environment=KIOSK_URL=https://days-tracker-server-deployment.reverse-python.ts.net/?kiosk=true
 
 # Working directory
 WorkingDirectory=/home/shreyash

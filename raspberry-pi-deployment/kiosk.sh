@@ -4,8 +4,12 @@
 
 set -e
 
+# Skip Chromium low-memory warning (Pi Zero 2 W has 512MB RAM)
+export SKIP_MEMCHECK=1
+
 # Configuration
-KIOSK_URL="${KIOSK_URL:-https://days-tracker-server-deployment.reverse-python.ts.net/}"
+# Note: ?kiosk=true enables the simplified kiosk UI optimized for the 160x128 TFT display
+KIOSK_URL="${KIOSK_URL:-https://days-tracker-server-deployment.reverse-python.ts.net/?kiosk=true}"
 DISPLAY_WIDTH=160
 DISPLAY_HEIGHT=128
 
@@ -63,8 +67,10 @@ for i in {1..30}; do
 done
 
 # Launch Chromium in kiosk mode
+# Note: --no-memcheck must be first to skip low-RAM warning on Pi Zero 2 W
 echo "Launching Chromium ($CHROMIUM_BIN)..."
 exec "$CHROMIUM_BIN" \
+    --no-memcheck \
     --kiosk \
     --noerrdialogs \
     --disable-infobars \

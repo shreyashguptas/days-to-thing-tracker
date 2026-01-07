@@ -3,9 +3,10 @@
 Rotary Encoder Handler for Raspberry Pi Kiosk
 
 Converts rotary encoder input to keyboard events:
-- Clockwise rotation -> Down arrow (scroll down)
-- Counter-clockwise rotation -> Up arrow (scroll up)
-- Button press -> Enter key (select/click)
+- Clockwise rotation -> Down arrow (move focus down)
+- Counter-clockwise rotation -> Up arrow (move focus up)
+- Short button press -> Enter key (select/activate)
+- Long button press (>0.5s) -> Escape key (back/cancel)
 
 GPIO Pin Configuration:
 - CLK (A): GPIO 17
@@ -31,11 +32,15 @@ PIN_SW = 22   # Encoder Switch (button)
 
 # Debounce settings
 ROTATION_DEBOUNCE = 0.05  # seconds
-BUTTON_DEBOUNCE = 0.3     # seconds
+BUTTON_DEBOUNCE = 0.2     # seconds
+
+# Long press threshold
+LONG_PRESS_TIME = 0.5  # seconds - hold longer than this for Escape
 
 # Track last action time for debouncing
 last_rotation_time = 0
 last_button_time = 0
+button_press_time = 0  # Track when button was pressed
 
 
 def send_key(key: str) -> None:
@@ -73,13 +78,31 @@ def on_rotate_counter_clockwise() -> None:
         send_key("Up")
 
 
-def on_button_press() -> None:
-    """Handle button press - Enter/select."""
-    global last_button_time
+def on_button_pressed() -> None:
+    """Handle button press start - record time."""
+    global button_press_time
+    button_press_time = time.time()
+
+
+def on_button_released() -> None:
+    """Handle button release - determine short or long press."""
+    global last_button_time, button_press_time
     now = time.time()
-    if now - last_button_time > BUTTON_DEBOUNCE:
-        last_button_time = now
-        print("Button -> Enter")
+
+    # Debounce check
+    if now - last_button_time < BUTTON_DEBOUNCE:
+        return
+
+    last_button_time = now
+    press_duration = now - button_press_time
+
+    if press_duration >= LONG_PRESS_TIME:
+        # Long press -> Escape (back/cancel)
+        print(f"Long press ({press_duration:.2f}s) -> Escape")
+        send_key("Escape")
+    else:
+        # Short press -> Enter (select)
+        print(f"Short press ({press_duration:.2f}s) -> Enter")
         send_key("Return")
 
 
@@ -91,9 +114,10 @@ def main() -> None:
     print(f"  SW:  GPIO {PIN_SW}")
     print("")
     print("Controls:")
-    print("  Clockwise     -> Down arrow (scroll down)")
-    print("  Counter-clock -> Up arrow (scroll up)")
-    print("  Button press  -> Enter (select)")
+    print("  Clockwise      -> Down arrow (move focus down)")
+    print("  Counter-clock  -> Up arrow (move focus up)")
+    print("  Short press    -> Enter (select)")
+    print(f"  Long press (>{LONG_PRESS_TIME}s) -> Escape (back)")
     print("")
     print("Press Ctrl+C to exit")
     print("")
@@ -106,8 +130,10 @@ def main() -> None:
     last_steps = encoder.steps
 
     # Set up button with pull-up (button connects to GND when pressed)
-    button = Button(PIN_SW, pull_up=True, bounce_time=0.1)
-    button.when_pressed = on_button_press
+    # Use both press and release to detect long press
+    button = Button(PIN_SW, pull_up=True, bounce_time=0.05)
+    button.when_pressed = on_button_pressed
+    button.when_released = on_button_released
 
     # Polling loop for encoder rotation
     # (gpiozero's when_rotated callbacks can be unreliable)

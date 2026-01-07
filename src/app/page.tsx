@@ -1,15 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { Button } from "@/components/ui/Button";
 import { TaskList } from "@/components/tasks/TaskList";
 import { TaskForm } from "@/components/tasks/TaskForm";
+import { KioskView } from "@/components/kiosk";
 import { useTasks } from "@/hooks/useTasks";
 import { useCountdown } from "@/hooks/useCountdown";
 import type { TaskWithDue, CreateTaskInput } from "@/types";
 
-export default function Home() {
+// Inner component that uses useSearchParams
+function HomeContent() {
+  const searchParams = useSearchParams();
+  const isKioskMode = searchParams.get("kiosk") === "true";
+
   const {
     tasks,
     isLoading,
@@ -23,8 +29,8 @@ export default function Home() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskWithDue | null>(null);
 
-  // Refresh data every minute
-  useCountdown(60000);
+  // Refresh data every minute (30 seconds in kiosk mode for quicker updates)
+  useCountdown(isKioskMode ? 30000 : 60000);
 
   const handleOpenForm = () => {
     setEditingTask(null);
@@ -55,6 +61,40 @@ export default function Home() {
     tasks.thisWeek.length +
     tasks.upcoming.length;
 
+  // Kiosk mode: simplified UI for 160x128 TFT display with rotary encoder
+  if (isKioskMode) {
+    if (isLoading) {
+      return (
+        <div className="kiosk-container">
+          <div className="kiosk-loading">
+            <div className="kiosk-loading-spinner" />
+            <div className="kiosk-loading-text">Loading...</div>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="kiosk-container">
+          <div className="kiosk-feedback">
+            <div className="kiosk-feedback-icon" style={{ color: 'var(--urgency-overdue)' }}>!</div>
+            <div className="kiosk-feedback-text">Error</div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <KioskView
+        tasks={tasks}
+        onComplete={async (id) => { await completeTask(id); }}
+        onDelete={deleteTask}
+      />
+    );
+  }
+
+  // Normal mode: full UI
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -116,5 +156,23 @@ export default function Home() {
         task={editingTask}
       />
     </div>
+  );
+}
+
+// Loading fallback for Suspense
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground" />
+    </div>
+  );
+}
+
+// Main export wrapped in Suspense for useSearchParams
+export default function Home() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <HomeContent />
+    </Suspense>
   );
 }

@@ -122,6 +122,18 @@ install_scripts() {
     # Set ownership
     chown shreyash:shreyash "${USER_HOME}/kiosk.sh" "${USER_HOME}/encoder.py"
 
+    # Configure Chromium to skip low-memory warning (Pi Zero 2 W has 512MB RAM)
+    # This creates a config file in /etc/chromium.d/ which Chromium sources on startup
+    echo "Configuring Chromium for low-memory kiosk mode..."
+    sudo mkdir -p /etc/chromium.d
+    echo '# Skip low memory warning for kiosk mode (added by kiosk installer)
+export SKIP_MEMCHECK=1' | sudo tee /etc/chromium.d/99-kiosk > /dev/null
+
+    # Configure X11 to use the TFT framebuffer at correct resolution
+    echo "Configuring X11 for TFT framebuffer..."
+    sudo mkdir -p /etc/X11/xorg.conf.d
+    sudo cp "${SCRIPT_DIR}/99-fbdev.conf" /etc/X11/xorg.conf.d/
+
     echo -e "${GREEN}Scripts installed!${NC}"
 }
 

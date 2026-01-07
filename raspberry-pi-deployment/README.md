@@ -168,6 +168,28 @@ Change `rotate=` value (0, 90, 180, or 270):
 dtoverlay=adafruit18,rotate=0,...   # or 90, 180, 270
 ```
 
+### X server running at wrong resolution (display shows cursor only)
+
+X may default to HDMI instead of the TFT. Verify with:
+```bash
+DISPLAY=:0 xrandr
+```
+
+If it shows 1024x768 instead of 160x128, install the X11 config:
+```bash
+sudo cp ~/raspberry-pi-deployment/99-fbdev.conf /etc/X11/xorg.conf.d/
+sudo systemctl restart kiosk
+```
+
+### Chromium shows "low RAM" warning dialog
+
+Pi Zero 2 W has 512MB RAM which triggers this warning. The `--no-memcheck` flag in kiosk.sh should prevent it. If it still appears:
+```bash
+sudo mkdir -p /etc/chromium.d
+echo 'export SKIP_MEMCHECK=1' | sudo tee /etc/chromium.d/99-kiosk
+sudo systemctl restart kiosk
+```
+
 ### Website not loading
 
 Check Tailscale:
@@ -201,10 +223,11 @@ sudo usermod -a -G gpio shreyash
 | File | Description |
 |------|-------------|
 | `install.sh` | Automated installer |
-| `kiosk.sh` | Starts fbcp + Chromium kiosk |
+| `kiosk.sh` | Starts X + Chromium kiosk |
 | `encoder.py` | Rotary encoder handler |
 | `kiosk.service` | Systemd service for kiosk |
 | `encoder.service` | Systemd service for encoder |
+| `99-fbdev.conf` | X11 config for TFT framebuffer |
 | `config.txt.additions` | Boot config reference |
 
 ## Configuration
