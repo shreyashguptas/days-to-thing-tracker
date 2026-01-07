@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { Button } from "@/components/ui/Button";
@@ -30,7 +30,15 @@ function HomeContent() {
   const [editingTask, setEditingTask] = useState<TaskWithDue | null>(null);
 
   // Refresh data every minute (30 seconds in kiosk mode for quicker updates)
-  useCountdown(isKioskMode ? 30000 : 60000);
+  const now = useCountdown(isKioskMode ? 30000 : 60000);
+
+  // Auto-refresh data when countdown triggers
+  useEffect(() => {
+    // Skip initial render (useTasks already fetches on mount)
+    if (!isLoading) {
+      fetchTasks();
+    }
+  }, [now]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpenForm = () => {
     setEditingTask(null);
