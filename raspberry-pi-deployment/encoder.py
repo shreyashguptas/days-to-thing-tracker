@@ -12,16 +12,16 @@ GPIO Pin Configuration:
 - CLK (A): GPIO 17
 - DT (B):  GPIO 27
 - SW:      GPIO 22
-- BL:      GPIO 18 (display backlight)
+- BL:      GPIO 18 (display backlight, controlled via sysfs)
 """
 
 import subprocess
 import sys
 import time
-from signal import pause
+from pathlib import Path
 
 try:
-    from gpiozero import RotaryEncoder, Button, OutputDevice
+    from gpiozero import RotaryEncoder, Button
 except ImportError:
     print("Error: gpiozero not installed. Run: sudo apt install python3-gpiozero")
     sys.exit(1)
@@ -50,7 +50,7 @@ button_press_time = 0  # Track when button was pressed
 # Idle timeout state
 last_activity_time = 0  # Will be initialized in main()
 screen_is_on = True
-backlight = None  # Will be initialized in main()
+backlight_path = None  # Path to sysfs backlight control (if available)
 
 
 def send_key(key: str) -> None:
@@ -68,33 +68,46 @@ def send_key(key: str) -> None:
         print("Error: xdotool not installed. Run: sudo apt install xdotool")
 
 
+def set_backlight(on: bool) -> bool:
+    """Control backlight via sysfs. Returns True if successful."""
+    if backlight_path is None:
+        return False
+    try:
+        with open(backlight_path, 'w') as f:
+            f.write('1' if on else '0')
+        return True
+    except (IOError, OSError) as e:
+        print(f"Backlight control error: {e}")
+        return False
+
+
 def screen_off() -> None:
-    """Turn off the display backlight via GPIO."""
+    """Turn off the display backlight."""
     global screen_is_on
-    if screen_is_on and backlight is not None:
-        backlight.off()
-        screen_is_on = False
-        print("Backlight OFF (idle timeout)")
+    if screen_is_on:
+        if set_backlight(False):
+            screen_is_on = False
+            print("Backlight OFF (idle timeout)")
 
 
 def screen_on() -> None:
-    """Turn on the display backlight via GPIO."""
+    """Turn on the display backlight."""
     global screen_is_on
-    if not screen_is_on and backlight is not None:
-        backlight.on()
-        screen_is_on = True
-        print("Backlight ON (user activity)")
+    if not screen_is_on:
+        if set_backlight(True):
+            screen_is_on = True
+            print("Backlight ON (user activity)")
 
 
 def record_activity() -> None:
     """Record user activity and wake screen immediately if off."""
     global last_activity_time, screen_is_on
     last_activity_time = time.time()
-    # Inline wake-up for instant response (bypass screen_on() overhead)
-    if not screen_is_on and backlight is not None:
-        backlight.on()
-        screen_is_on = True
-        print("Backlight ON (user activity)")
+    # Inline wake-up for instant response
+    if not screen_is_on:
+        if set_backlight(True):
+            screen_is_on = True
+            print("Backlight ON (user activity)")
 
 
 def on_rotate_clockwise() -> None:
@@ -148,9 +161,29 @@ def on_button_released() -> None:
         send_key("Return")
 
 
+def find_backlight_control() -> str | None:
+    """Find sysfs path for backlight control. Returns path or None."""
+    # Check for standard backlight interface
+    backlight_dir = Path('/sys/class/backlight')
+    if backlight_dir.exists():
+        for bl in backlight_dir.iterdir():
+            brightness_path = bl / 'brightness'
+            if brightness_path.exists():
+                print(f"  Found backlight: {bl.name}")
+                return str(brightness_path)
+
+    # Check for GPIO sysfs (if GPIO 18 is exported)
+    gpio_path = Path(f'/sys/class/gpio/gpio{PIN_BACKLIGHT}/value')
+    if gpio_path.exists():
+        print(f"  Found GPIO {PIN_BACKLIGHT} sysfs")
+        return str(gpio_path)
+
+    return None
+
+
 def main() -> None:
     """Main function to set up encoder and button handlers."""
-    global last_activity_time, backlight
+    global last_activity_time, backlight_path
 
     print("Rotary Encoder Handler Starting...")
     print(f"  CLK: GPIO {PIN_CLK}")
@@ -164,13 +197,17 @@ def main() -> None:
     print("  Short press    -> Enter (select)")
     print(f"  Long press (>{LONG_PRESS_TIME}s) -> Escape (back)")
     print("")
-    print(f"Backlight will turn off after {IDLE_TIMEOUT}s of inactivity")
+
+    # Initialize backlight control via sysfs
+    backlight_path = find_backlight_control()
+    if backlight_path:
+        print(f"Backlight control: {backlight_path}")
+        print(f"Backlight will turn off after {IDLE_TIMEOUT}s of inactivity")
+    else:
+        print("Backlight control: not available (screen timeout disabled)")
+    print("")
     print("Press Ctrl+C to exit")
     print("")
-
-    # Initialize backlight control (start with backlight ON)
-    # Using OutputDevice for direct GPIO control (faster than LED)
-    backlight = OutputDevice(PIN_BACKLIGHT, initial_value=True)
 
     # Initialize idle timeout tracking
     last_activity_time = time.time()
