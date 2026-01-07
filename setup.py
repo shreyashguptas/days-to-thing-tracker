@@ -12,6 +12,7 @@ import sys
 import subprocess
 import shutil
 import getpass
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.absolute()
@@ -65,6 +66,42 @@ def save_env_file(config: dict):
     with open(ENV_FILE, "w") as f:
         f.write("\n".join(lines) + "\n")
     os.chmod(ENV_FILE, 0o600)
+
+
+def configure_tailscale_serve():
+    """Configure Tailscale Serve to proxy HTTPS to the app."""
+    print("\nConfiguring Tailscale Serve...")
+
+    # Wait for Tailscale to connect (up to 30 seconds)
+    for i in range(30):
+        result = subprocess.run(
+            ["docker", "exec", "days-tracker-tailscale", "tailscale", "status"],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0 and "100." in result.stdout:
+            break
+        time.sleep(1)
+    else:
+        print("Warning: Tailscale may not be connected yet")
+
+    # Configure serve
+    result = subprocess.run(
+        ["docker", "exec", "days-tracker-tailscale",
+         "tailscale", "serve", "--bg", "--https=443", "http://127.0.0.1:3000"],
+        capture_output=True, text=True
+    )
+
+    if result.returncode == 0:
+        # Get the serve status to show the URL
+        status = subprocess.run(
+            ["docker", "exec", "days-tracker-tailscale", "tailscale", "serve", "status"],
+            capture_output=True, text=True
+        )
+        print("Tailscale Serve configured!")
+        if status.stdout:
+            print(status.stdout)
+    else:
+        print(f"Warning: Could not configure Tailscale Serve: {result.stderr}")
 
 
 def configure_tailscale():
@@ -130,6 +167,7 @@ def deploy_refresh():
     run(["docker", "compose", "down"])
     print("\nBringing containers up...")
     run(["docker", "compose", "up", "-d"])
+    configure_tailscale_serve()
     print("\nDone! Containers refreshed.")
 
 
@@ -144,6 +182,7 @@ def deploy_rebuild():
         return
     print("\nStarting containers...")
     run(["docker", "compose", "up", "-d"])
+    configure_tailscale_serve()
     print("\nDone! Container rebuilt and running.")
 
 
@@ -177,6 +216,7 @@ def deploy_full():
 
     print("\nStarting containers...")
     run(["docker", "compose", "up", "-d"])
+    configure_tailscale_serve()
     print("\nDone! Full rebuild complete.")
 
 
@@ -220,6 +260,7 @@ def deploy_clean():
 
     print("\nStarting containers...")
     run(["docker", "compose", "up", "-d"])
+    configure_tailscale_serve()
     print("\nDone! Clean rebuild complete.")
 
 
@@ -275,11 +316,10 @@ def first_time_setup():
 
     print("\nStarting containers...")
     run(["docker", "compose", "up", "-d"])
+    configure_tailscale_serve()
 
     print_header("Setup Complete!")
-    print("Access the app at:")
-    print("  http://days-tracker:3000")
-    print("  (or your Tailscale hostname)")
+    print("Access the app via your Tailscale HTTPS URL shown above.")
     print("\nRun 'python setup.py' again to see deployment options.")
 
 

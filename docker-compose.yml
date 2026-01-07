@@ -8,7 +8,6 @@ services:
       - SYS_MODULE
     volumes:
       - ./.docker/tailscale/state:/var/lib/tailscale
-      - tailscale-socket:/var/run/tailscale
       - /dev/net/tun:/dev/net/tun
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
@@ -16,24 +15,6 @@ services:
       - TS_USERSPACE=false
       - TS_ACCEPT_DNS=true
     restart: unless-stopped
-
-  # Sidecar to configure Tailscale Serve dynamically
-  tailscale-serve:
-    image: tailscale/tailscale:latest
-    network_mode: service:tailscale
-    depends_on:
-      - tailscale
-    volumes:
-      - tailscale-socket:/var/run/tailscale
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        echo "Waiting for Tailscale to connect..."
-        sleep 15
-        echo "Configuring Tailscale Serve..."
-        tailscale serve --bg --https=443 http://127.0.0.1:3000 || echo "Serve config may already exist"
-        echo "Tailscale Serve configured. Exiting sidecar."
-    restart: "no"
 
   app:
     build:
@@ -52,4 +33,3 @@ services:
 
 volumes:
   app-data:
-  tailscale-socket:
