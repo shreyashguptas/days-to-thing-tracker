@@ -9,11 +9,11 @@ name = "kiosk_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Python bindings
-pyo3 = { version = "0.20", features = ["extension-module"] }
+# Python bindings (0.22+ supports Python 3.13)
+pyo3 = { version = "0.22", features = ["extension-module"] }
 
 # GPIO for Raspberry Pi
-rppal = "0.17"
+rppal = "0.22"
 
 # Framebuffer access
 framebuffer = "0.3"
