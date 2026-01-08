@@ -14,6 +14,10 @@ use crate::{HistoryEntry, TaskData};
 /// Bitmap font width (5 pixels per character)
 const FONT_WIDTH: u32 = 5;
 
+/// Large number font dimensions (smoother, friendlier numbers)
+const BIG_NUM_WIDTH: u32 = 12;
+const BIG_NUM_HEIGHT: u32 = 18;
+
 /// Renderer handles all UI drawing operations
 pub struct Renderer {
     display: Display,
@@ -61,6 +65,45 @@ impl Renderer {
         }
     }
 
+    /// Draw large friendly number (uses smoother 12x18 font)
+    fn draw_big_number(&mut self, x: u32, y: u32, ch: char, color: Color, scale: u32) {
+        let bitmap = get_big_num_bitmap(ch);
+
+        for (row, &bits) in bitmap.iter().enumerate() {
+            for col in 0..BIG_NUM_WIDTH {
+                if (bits >> (BIG_NUM_WIDTH - 1 - col)) & 1 == 1 {
+                    for sy in 0..scale {
+                        for sx in 0..scale {
+                            self.display.set_pixel(
+                                x + col * scale + sx,
+                                y + row as u32 * scale + sy,
+                                color,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Draw large number string centered
+    fn draw_big_number_centered(&mut self, y: u32, text: &str, color: Color, scale: u32) {
+        let char_width = (BIG_NUM_WIDTH + 2) * scale;
+        let total_width = text.len() as u32 * char_width;
+        let start_x = (self.display.width().saturating_sub(total_width)) / 2;
+
+        let mut cursor_x = start_x;
+        for ch in text.chars() {
+            self.draw_big_number(cursor_x, y, ch, color, scale);
+            cursor_x += char_width;
+        }
+    }
+
+    /// Calculate big number width
+    fn big_number_width(&self, text: &str, scale: u32) -> u32 {
+        text.len() as u32 * (BIG_NUM_WIDTH + 2) * scale
+    }
+
     /// Calculate text width
     fn text_width(&self, text: &str, scale: u32) -> u32 {
         text.len() as u32 * (FONT_WIDTH + 1) * scale
@@ -93,13 +136,16 @@ impl Renderer {
             self.draw_text_centered(name_start_y + (i as u32 * 9), line, Theme::TEXT_PRIMARY, 1);
         }
 
-        // Large day count
+        // Large day count - use friendly rounded numbers
         let days_text = format!("{}", task.days_until_due.abs());
 
         // Big number in center - position depends on name lines
-        let number_y = if name_lines.len() > 1 { 34 } else { 30 };
-        let scale = if days_text.len() <= 2 { 4 } else { 3 };
-        self.draw_text_centered(number_y, &days_text, urgency_color, scale);
+        let number_y = if name_lines.len() > 1 { 32 } else { 28 };
+
+        // Use scale 2 for big friendly numbers (they're already 12x18 base)
+        // For 3+ digit numbers, use scale 1 to fit
+        let scale = if days_text.len() >= 3 { 1 } else { 2 };
+        self.draw_big_number_centered(number_y, &days_text, urgency_color, scale);
 
         // "DAYS LEFT" or "DAYS OVERDUE" label
         let days_label = if task.days_until_due < 0 {
@@ -109,7 +155,9 @@ impl Renderer {
         } else {
             "DAYS LEFT"
         };
-        let label_y = number_y + (scale * 7) + 4;
+        // Big numbers are 18 pixels tall at scale 1, 36 at scale 2
+        let number_height = BIG_NUM_HEIGHT * scale;
+        let label_y = number_y + number_height + 4;
         self.draw_text_centered(label_y, days_label, Theme::TEXT_MUTED, 1);
 
         // Due date
@@ -501,5 +549,235 @@ fn get_char_bitmap(ch: char) -> [u8; 7] {
         '^' => [0b00100, 0b01010, 0b10001, 0b00000, 0b00000, 0b00000, 0b00000],
         '_' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b11111],
         _ => [0b11111, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11111],
+    }
+}
+
+/// Get large bitmap for numbers (12x18 smooth, rounded font)
+/// Designed to look friendly and modern, not robotic
+fn get_big_num_bitmap(ch: char) -> [u16; 18] {
+    match ch {
+        '0' => [
+            0b000111111000,
+            0b001111111100,
+            0b011110011110,
+            0b011100001110,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b011100001110,
+            0b011110011110,
+            0b001111111100,
+            0b000111111000,
+            0b000000000000,
+        ],
+        '1' => [
+            0b000011100000,
+            0b000111100000,
+            0b001111100000,
+            0b011101100000,
+            0b000001100000,
+            0b000001100000,
+            0b000001100000,
+            0b000001100000,
+            0b000001100000,
+            0b000001100000,
+            0b000001100000,
+            0b000001100000,
+            0b000001100000,
+            0b000001100000,
+            0b000001100000,
+            0b001111111100,
+            0b001111111100,
+            0b000000000000,
+        ],
+        '2' => [
+            0b000111111000,
+            0b001111111100,
+            0b011110011110,
+            0b111000000111,
+            0b000000000111,
+            0b000000000111,
+            0b000000001110,
+            0b000000011100,
+            0b000000111000,
+            0b000001110000,
+            0b000011100000,
+            0b000111000000,
+            0b001110000000,
+            0b011100000000,
+            0b111000000000,
+            0b111111111111,
+            0b111111111111,
+            0b000000000000,
+        ],
+        '3' => [
+            0b000111111000,
+            0b001111111100,
+            0b011110011110,
+            0b111000000111,
+            0b000000000111,
+            0b000000000111,
+            0b000000001110,
+            0b000011111100,
+            0b000011111100,
+            0b000000001110,
+            0b000000000111,
+            0b000000000111,
+            0b000000000111,
+            0b111000000111,
+            0b011110011110,
+            0b001111111100,
+            0b000111111000,
+            0b000000000000,
+        ],
+        '4' => [
+            0b000000011100,
+            0b000000111100,
+            0b000001111100,
+            0b000011101100,
+            0b000111001100,
+            0b001110001100,
+            0b011100001100,
+            0b111000001100,
+            0b111111111111,
+            0b111111111111,
+            0b000000001100,
+            0b000000001100,
+            0b000000001100,
+            0b000000001100,
+            0b000000001100,
+            0b000000001100,
+            0b000000001100,
+            0b000000000000,
+        ],
+        '5' => [
+            0b111111111111,
+            0b111111111111,
+            0b111000000000,
+            0b111000000000,
+            0b111000000000,
+            0b111111111000,
+            0b111111111100,
+            0b000000011110,
+            0b000000000111,
+            0b000000000111,
+            0b000000000111,
+            0b000000000111,
+            0b000000000111,
+            0b111000000111,
+            0b011110011110,
+            0b001111111100,
+            0b000111111000,
+            0b000000000000,
+        ],
+        '6' => [
+            0b000011111000,
+            0b000111111100,
+            0b001111001110,
+            0b011110000000,
+            0b011100000000,
+            0b111000000000,
+            0b111011111000,
+            0b111111111100,
+            0b111110011110,
+            0b111100000111,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b011100001110,
+            0b011110011110,
+            0b001111111100,
+            0b000111111000,
+            0b000000000000,
+        ],
+        '7' => [
+            0b111111111111,
+            0b111111111111,
+            0b000000000111,
+            0b000000001110,
+            0b000000011100,
+            0b000000111000,
+            0b000001110000,
+            0b000001110000,
+            0b000011100000,
+            0b000011100000,
+            0b000111000000,
+            0b000111000000,
+            0b000111000000,
+            0b000111000000,
+            0b000111000000,
+            0b000111000000,
+            0b000111000000,
+            0b000000000000,
+        ],
+        '8' => [
+            0b000111111000,
+            0b001111111100,
+            0b011110011110,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b011100001110,
+            0b001111111100,
+            0b001111111100,
+            0b011100001110,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b011110011110,
+            0b001111111100,
+            0b000111111000,
+            0b000000000000,
+        ],
+        '9' => [
+            0b000111111000,
+            0b001111111100,
+            0b011110011110,
+            0b011100001110,
+            0b111000000111,
+            0b111000000111,
+            0b111000000111,
+            0b111000001111,
+            0b011110011111,
+            0b001111111111,
+            0b000111110111,
+            0b000000000111,
+            0b000000000111,
+            0b000000001110,
+            0b011100011100,
+            0b001111111000,
+            0b000111110000,
+            0b000000000000,
+        ],
+        // Minus sign for negative numbers
+        '-' => [
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+            0b111111111111,
+            0b111111111111,
+            0b111111111111,
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+            0b000000000000,
+        ],
+        // Fallback - empty
+        _ => [0; 18],
     }
 }
