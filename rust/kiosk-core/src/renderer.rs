@@ -254,6 +254,36 @@ impl Renderer {
         self.display.flush();
     }
 
+    /// Draw a button pill at specific position
+    fn draw_button_pill(&mut self, x: u32, y: u32, width: u32, height: u32, text: &str, bg_color: Color, text_color: Color) {
+        // Draw filled rectangle
+        self.display.fill_rect(x, y, width, height, bg_color);
+
+        // Cut corners for rounded effect
+        // Top-left
+        self.display.set_pixel(x, y, Theme::BACKGROUND);
+        self.display.set_pixel(x + 1, y, Theme::BACKGROUND);
+        self.display.set_pixel(x, y + 1, Theme::BACKGROUND);
+        // Top-right
+        self.display.set_pixel(x + width - 1, y, Theme::BACKGROUND);
+        self.display.set_pixel(x + width - 2, y, Theme::BACKGROUND);
+        self.display.set_pixel(x + width - 1, y + 1, Theme::BACKGROUND);
+        // Bottom-left
+        self.display.set_pixel(x, y + height - 1, Theme::BACKGROUND);
+        self.display.set_pixel(x + 1, y + height - 1, Theme::BACKGROUND);
+        self.display.set_pixel(x, y + height - 2, Theme::BACKGROUND);
+        // Bottom-right
+        self.display.set_pixel(x + width - 1, y + height - 1, Theme::BACKGROUND);
+        self.display.set_pixel(x + width - 2, y + height - 1, Theme::BACKGROUND);
+        self.display.set_pixel(x + width - 1, y + height - 2, Theme::BACKGROUND);
+
+        // Center text in button
+        let text_w = self.text_width(text, 1);
+        let text_x = x + (width.saturating_sub(text_w)) / 2;
+        let text_y = y + (height.saturating_sub(7)) / 2;
+        self.draw_text(text_x, text_y, text, text_color, 1);
+    }
+
     /// Render confirmation dialog
     pub fn render_confirm_dialog(&mut self, message: &str, confirm_selected: bool) {
         self.clear();
@@ -272,19 +302,31 @@ impl Renderer {
         }
 
         // Buttons
-        let btn_y = h - 30;
-        let btn_width = 50;
-        let gap = 20;
+        let btn_y = h - 28;
+        let btn_width = 52;
+        let btn_height = 16;
+        let gap = 16;
 
         let cancel_x = (w - btn_width * 2 - gap) / 2;
-        let cancel_color = if !confirm_selected { Theme::ACCENT } else { Theme::TEXT_MUTED };
-        self.display.rect(cancel_x, btn_y, btn_width, 16, cancel_color);
-        self.draw_text(cancel_x + 8, btn_y + 4, "Cancel", cancel_color, 1);
-
         let confirm_x = cancel_x + btn_width + gap;
-        let confirm_color = if confirm_selected { Theme::DESTRUCTIVE } else { Theme::TEXT_MUTED };
-        self.display.rect(confirm_x, btn_y, btn_width, 16, confirm_color);
-        self.draw_text(confirm_x + 8, btn_y + 4, "Delete", confirm_color, 1);
+
+        // Cancel button - green pill when selected, muted text when not
+        if !confirm_selected {
+            self.draw_button_pill(cancel_x, btn_y, btn_width, btn_height, "Cancel", Theme::SUCCESS, Theme::TEXT_PRIMARY);
+        } else {
+            // Just draw muted text, no background
+            let text_x = cancel_x + (btn_width - self.text_width("Cancel", 1)) / 2;
+            self.draw_text(text_x, btn_y + 4, "Cancel", Theme::TEXT_MUTED, 1);
+        }
+
+        // Delete button - red pill when selected, muted text when not
+        if confirm_selected {
+            self.draw_button_pill(confirm_x, btn_y, btn_width, btn_height, "Delete", Theme::DESTRUCTIVE, Theme::TEXT_PRIMARY);
+        } else {
+            // Just draw muted text, no background
+            let text_x = confirm_x + (btn_width - self.text_width("Delete", 1)) / 2;
+            self.draw_text(text_x, btn_y + 4, "Delete", Theme::TEXT_MUTED, 1);
+        }
 
         self.display.flush();
     }
@@ -436,6 +478,165 @@ impl Renderer {
 
         self.draw_text_centered(40, "No tasks", Theme::TEXT_PRIMARY, 2);
         self.draw_text_centered(70, "Add tasks via web", Theme::TEXT_MUTED, 1);
+
+        self.display.flush();
+    }
+
+    /// Render dashboard with metrics and navigation
+    pub fn render_dashboard(
+        &mut self,
+        overdue: u32,
+        today: u32,
+        week: u32,
+        total: u32,
+        selected: usize,
+    ) {
+        self.clear();
+
+        let w = self.display.width();
+        let h = self.display.height();
+
+        // === URGENCY BAR (visual chart at top) ===
+        let bar_y = 4;
+        let bar_h = 8;
+        let bar_margin = 8;
+        let bar_w = w - (bar_margin * 2);
+
+        // Draw bar background
+        self.display.fill_rect(bar_margin, bar_y, bar_w, bar_h, Theme::CARD_BORDER);
+
+        // Calculate proportions for stacked bar
+        if total > 0 {
+            let overdue_w = (overdue as f32 / total as f32 * bar_w as f32) as u32;
+            let today_w = (today as f32 / total as f32 * bar_w as f32) as u32;
+            let week_only = week.saturating_sub(overdue).saturating_sub(today);
+            let week_w = (week_only as f32 / total as f32 * bar_w as f32) as u32;
+
+            let mut x = bar_margin;
+
+            // Overdue segment (red)
+            if overdue_w > 0 {
+                self.display.fill_rect(x, bar_y, overdue_w, bar_h, Theme::URGENCY_OVERDUE);
+                x += overdue_w;
+            }
+            // Today segment (orange)
+            if today_w > 0 {
+                self.display.fill_rect(x, bar_y, today_w, bar_h, Theme::URGENCY_TODAY);
+                x += today_w;
+            }
+            // This week segment (green)
+            if week_w > 0 {
+                self.display.fill_rect(x, bar_y, week_w, bar_h, Theme::URGENCY_WEEK);
+                x += week_w;
+            }
+            // Remaining (upcoming - blue)
+            let remaining = bar_w.saturating_sub(x - bar_margin);
+            if remaining > 0 {
+                self.display.fill_rect(x, bar_y, remaining, bar_h, Theme::URGENCY_UPCOMING);
+            }
+        }
+
+        // === 2x2 METRIC GRID ===
+        let grid_y = 18;
+        let cell_w = (w - 12) / 2;  // 2 columns with margins
+        let cell_h = 38;
+        let gap = 4;
+
+        // Cell positions
+        let col1_x = 4;
+        let col2_x = col1_x + cell_w + gap;
+        let row1_y = grid_y;
+        let row2_y = grid_y + cell_h + gap;
+
+        // Draw the 4 metric cells
+        // 0 = OVERDUE, 1 = TODAY, 2 = WEEK, 3 = TOTAL
+        self.draw_metric_cell(col1_x, row1_y, cell_w, cell_h, "OVERDUE", overdue, Theme::URGENCY_OVERDUE, selected == 0);
+        self.draw_metric_cell(col2_x, row1_y, cell_w, cell_h, "TODAY", today, Theme::URGENCY_TODAY, selected == 1);
+        self.draw_metric_cell(col1_x, row2_y, cell_w, cell_h, "WEEK", week, Theme::URGENCY_WEEK, selected == 2);
+        self.draw_metric_cell(col2_x, row2_y, cell_w, cell_h, "TOTAL", total, Theme::URGENCY_UPCOMING, selected == 3);
+
+        // === NAVIGATION BAR ===
+        let nav_y = h - 24;
+        let btn_w = 65;
+        let btn_h = 18;
+        let nav_gap = 10;
+
+        let all_x = (w - btn_w * 2 - nav_gap) / 2;
+        let settings_x = all_x + btn_w + nav_gap;
+
+        // 4 = ALL_TASKS, 5 = SETTINGS
+        if selected == 4 {
+            self.draw_button_pill(all_x, nav_y, btn_w, btn_h, "All Tasks", Theme::ACCENT, Theme::TEXT_PRIMARY);
+            self.draw_text(settings_x + (btn_w - self.text_width("Settings", 1)) / 2, nav_y + 5, "Settings", Theme::TEXT_MUTED, 1);
+        } else if selected == 5 {
+            self.draw_text(all_x + (btn_w - self.text_width("All Tasks", 1)) / 2, nav_y + 5, "All Tasks", Theme::TEXT_MUTED, 1);
+            self.draw_button_pill(settings_x, nav_y, btn_w, btn_h, "Settings", Theme::ACCENT, Theme::TEXT_PRIMARY);
+        } else {
+            // Neither nav item selected, show both as muted
+            self.draw_text(all_x + (btn_w - self.text_width("All Tasks", 1)) / 2, nav_y + 5, "All Tasks", Theme::TEXT_MUTED, 1);
+            self.draw_text(settings_x + (btn_w - self.text_width("Settings", 1)) / 2, nav_y + 5, "Settings", Theme::TEXT_MUTED, 1);
+        }
+
+        // Navigation hint
+        self.draw_text_centered(h - 6, "scroll to navigate", Theme::TEXT_MUTED, 1);
+
+        self.display.flush();
+    }
+
+    /// Draw a metric cell for the dashboard
+    fn draw_metric_cell(&mut self, x: u32, y: u32, w: u32, h: u32, label: &str, count: u32, color: Color, selected: bool) {
+        // Draw cell background
+        let bg_color = if selected { Theme::SELECTION_BG } else { Theme::CARD_BG };
+        self.display.fill_rect(x, y, w, h, bg_color);
+
+        // Draw selection border if selected
+        if selected {
+            // Top border
+            self.display.hline(x, y, w, color);
+            self.display.hline(x, y + 1, w, color);
+            // Bottom border
+            self.display.hline(x, y + h - 1, w, color);
+            self.display.hline(x, y + h - 2, w, color);
+            // Left border
+            self.display.vline(x, y, h, color);
+            self.display.vline(x + 1, y, h, color);
+            // Right border
+            self.display.vline(x + w - 1, y, h, color);
+            self.display.vline(x + w - 2, y, h, color);
+        }
+
+        // Draw big number centered
+        let num_str = count.to_string();
+        let num_w = self.big_number_width(&num_str, 1);
+        let num_x = x + (w.saturating_sub(num_w)) / 2;
+        let num_y = y + 6;
+
+        for (i, ch) in num_str.chars().enumerate() {
+            self.draw_big_number(num_x + i as u32 * (BIG_NUM_WIDTH + 2), num_y, ch, color, 1);
+        }
+
+        // Draw label below number
+        let label_w = self.text_width(label, 1);
+        let label_x = x + (w.saturating_sub(label_w)) / 2;
+        let label_y = y + h - 10;
+        self.draw_text(label_x, label_y, label, Theme::TEXT_MUTED, 1);
+    }
+
+    /// Render empty filtered list message
+    pub fn render_empty_filtered(&mut self, filter_name: &str) {
+        self.clear();
+
+        self.draw_text_centered(35, "No tasks", Theme::TEXT_PRIMARY, 2);
+
+        let msg = match filter_name {
+            "overdue" => "Nothing overdue!",
+            "today" => "Nothing due today!",
+            "week" => "Nothing this week!",
+            _ => "No tasks found",
+        };
+        self.draw_text_centered(65, msg, Theme::SUCCESS, 1);
+
+        self.draw_text_centered(self.display.height() - 10, "long press: back", Theme::TEXT_MUTED, 1);
 
         self.display.flush();
     }

@@ -41,6 +41,7 @@ class KioskApp:
         self.last_render_data = None
 
         # Load initial data
+        self._load_counts()
         self._load_tasks()
 
         # Set up signal handlers
@@ -54,10 +55,18 @@ class KioskApp:
         if RUST_AVAILABLE:
             kiosk_core.shutdown()
 
-    def _load_tasks(self):
-        """Load tasks from database"""
-        tasks = self.db.get_all_tasks(sort_by_due=True)
+    def _load_tasks(self, urgency_filter: str = None):
+        """Load tasks from database, optionally filtered by urgency"""
+        if urgency_filter:
+            tasks = self.db.get_tasks_by_urgency(urgency_filter)
+        else:
+            tasks = self.db.get_all_tasks(sort_by_due=True)
         self.nav.set_tasks(tasks)
+
+    def _load_counts(self):
+        """Load task counts for dashboard"""
+        counts = self.db.get_task_counts()
+        self.nav.set_task_counts(counts)
 
     def _init_display(self):
         """Initialize display controller"""
@@ -103,6 +112,17 @@ class KioskApp:
             self._toggle_screen_timeout()
         elif action == "show_qr":
             pass  # QR code view handled in render
+        elif action == "filter_tasks":
+            # Load tasks filtered by the selected urgency
+            self._load_tasks(self.nav.ctx.filtered_urgency)
+        elif action == "show_all_tasks":
+            # Load all tasks
+            self._load_tasks()
+        elif action == "show_settings":
+            pass  # Settings view handled in render
+        elif action == "go_dashboard":
+            # Refresh counts when going back to dashboard
+            self._load_counts()
 
     def _complete_current_task(self):
         """Complete the current task with animation"""
@@ -121,8 +141,9 @@ class KioskApp:
         # Actually complete in database
         self.db.complete_task(task.id)
 
-        # Reload tasks
-        self._load_tasks()
+        # Reload tasks and counts
+        self._load_counts()
+        self._load_tasks(self.nav.ctx.filtered_urgency)
 
         # Return to task list
         self.nav.complete_animation_done()
@@ -134,7 +155,8 @@ class KioskApp:
             return
 
         self.db.delete_task(task.id)
-        self._load_tasks()
+        self._load_counts()
+        self._load_tasks(self.nav.ctx.filtered_urgency)
 
     def _load_history(self):
         """Load history for current task"""
@@ -168,8 +190,19 @@ class KioskApp:
         state = render_data["state"]
 
         try:
-            if state == "TASK_LIST":
+            if state == "DASHBOARD":
+                counts = render_data.get("counts", {})
+                self.controller.render_dashboard(
+                    counts.get("overdue", 0),
+                    counts.get("today", 0),
+                    counts.get("week", 0),
+                    counts.get("total", 0),
+                    render_data.get("selected", 0),
+                )
+
+            elif state == "TASK_LIST":
                 task = render_data.get("task")
+                filtered = render_data.get("filtered")
                 if task:
                     task_data = TaskData(
                         id=task["id"],
@@ -183,6 +216,12 @@ class KioskApp:
                         render_data["index"],
                         render_data["total"],
                     )
+                elif filtered:
+                    # Empty filtered list
+                    self.controller.render_empty_filtered(filtered)
+                else:
+                    # Empty overall list
+                    self.controller.render_empty()
 
             elif state == "TASK_ACTIONS":
                 self.controller.render_action_menu(

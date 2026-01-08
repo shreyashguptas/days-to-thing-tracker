@@ -10,6 +10,7 @@ from models import CompletionRecord, Task
 
 class ViewState(Enum):
     """Possible view states"""
+    DASHBOARD = auto()
     TASK_LIST = auto()
     TASK_ACTIONS = auto()
     DELETE_CONFIRM = auto()
@@ -18,6 +19,16 @@ class ViewState(Enum):
     SETTINGS = auto()
     QR_CODE = auto()
     EMPTY = auto()
+
+
+class DashboardItem(Enum):
+    """Dashboard selectable items"""
+    OVERDUE = "overdue"
+    TODAY = "today"
+    WEEK = "week"
+    TOTAL = "total"
+    ALL_TASKS = "all_tasks"
+    SETTINGS = "settings"
 
 
 class ActionItem(Enum):
@@ -38,7 +49,13 @@ class SettingItem(Enum):
 @dataclass
 class ViewContext:
     """Current view state and context data"""
-    state: ViewState = ViewState.TASK_LIST
+    state: ViewState = ViewState.DASHBOARD
+
+    # Dashboard state
+    dashboard_items: List[DashboardItem] = field(default_factory=lambda: list(DashboardItem))
+    dashboard_index: int = 0
+    task_counts: dict = field(default_factory=lambda: {"overdue": 0, "today": 0, "week": 0, "total": 0})
+    filtered_urgency: Optional[str] = None  # When viewing filtered task list
 
     # Task list state
     tasks: List[Task] = field(default_factory=list)
@@ -69,6 +86,13 @@ class ViewContext:
             return self.tasks[self.task_index]
         return None
 
+    @property
+    def current_dashboard_item(self) -> Optional[DashboardItem]:
+        """Get currently selected dashboard item"""
+        if 0 <= self.dashboard_index < len(self.dashboard_items):
+            return self.dashboard_items[self.dashboard_index]
+        return None
+
 
 class ViewNavigator:
     """Handles navigation between views based on encoder input"""
@@ -80,17 +104,13 @@ class ViewNavigator:
         """Update task list"""
         self.ctx.tasks = tasks
 
-        # Handle empty state
-        if not tasks:
-            self.ctx.state = ViewState.EMPTY
-            return
-
         # Clamp index
-        if self.ctx.task_index >= len(tasks):
+        if tasks and self.ctx.task_index >= len(tasks):
             self.ctx.task_index = len(tasks) - 1
 
-        if self.ctx.state == ViewState.EMPTY:
-            self.ctx.state = ViewState.TASK_LIST
+    def set_task_counts(self, counts: dict):
+        """Update task counts for dashboard"""
+        self.ctx.task_counts = counts
 
     def set_history(self, history: List[CompletionRecord]):
         """Update history for current task"""
@@ -101,7 +121,10 @@ class ViewNavigator:
         """Handle clockwise encoder rotation (scroll down)"""
         ctx = self.ctx
 
-        if ctx.state == ViewState.TASK_LIST:
+        if ctx.state == ViewState.DASHBOARD:
+            ctx.dashboard_index = (ctx.dashboard_index + 1) % len(ctx.dashboard_items)
+
+        elif ctx.state == ViewState.TASK_LIST:
             if ctx.tasks:
                 ctx.task_index = (ctx.task_index + 1) % len(ctx.tasks)
 
@@ -123,7 +146,10 @@ class ViewNavigator:
         """Handle counter-clockwise encoder rotation (scroll up)"""
         ctx = self.ctx
 
-        if ctx.state == ViewState.TASK_LIST:
+        if ctx.state == ViewState.DASHBOARD:
+            ctx.dashboard_index = (ctx.dashboard_index - 1) % len(ctx.dashboard_items)
+
+        elif ctx.state == ViewState.TASK_LIST:
             if ctx.tasks:
                 ctx.task_index = (ctx.task_index - 1) % len(ctx.tasks)
 
@@ -146,10 +172,30 @@ class ViewNavigator:
         - "complete": Complete the current task
         - "delete": Delete the current task
         - "toggle_timeout": Toggle screen timeout setting
+        - "filter_tasks": Filter tasks by selected urgency
+        - "show_all_tasks": Show all tasks
+        - "show_settings": Navigate to settings
         """
         ctx = self.ctx
 
-        if ctx.state == ViewState.TASK_LIST:
+        if ctx.state == ViewState.DASHBOARD:
+            item = ctx.current_dashboard_item
+            if item == DashboardItem.ALL_TASKS:
+                ctx.filtered_urgency = None
+                ctx.task_index = 0
+                ctx.state = ViewState.TASK_LIST
+                return "show_all_tasks"
+            elif item == DashboardItem.SETTINGS:
+                ctx.setting_index = 0
+                ctx.state = ViewState.SETTINGS
+                return "show_settings"
+            elif item in (DashboardItem.OVERDUE, DashboardItem.TODAY, DashboardItem.WEEK, DashboardItem.TOTAL):
+                ctx.filtered_urgency = item.value
+                ctx.task_index = 0
+                ctx.state = ViewState.TASK_LIST
+                return "filter_tasks"
+
+        elif ctx.state == ViewState.TASK_LIST:
             if ctx.tasks:
                 ctx.action_index = 0
                 ctx.state = ViewState.TASK_ACTIONS
@@ -172,6 +218,7 @@ class ViewNavigator:
                 ctx.state = ViewState.DELETE_CONFIRM
 
             elif action == ActionItem.BACK:
+                # Back from action menu goes to task list (not dashboard)
                 ctx.state = ViewState.TASK_LIST
 
         elif ctx.state == ViewState.DELETE_CONFIRM:
@@ -198,25 +245,35 @@ class ViewNavigator:
                 return "toggle_timeout"
 
             elif setting == SettingItem.BACK:
-                ctx.state = ViewState.TASK_LIST
+                ctx.state = ViewState.DASHBOARD
 
         return None
 
     def handle_long_press(self) -> Optional[str]:
-        """Handle long press (back/escape or settings)"""
+        """Handle long press (back/escape)"""
         ctx = self.ctx
 
-        if ctx.state == ViewState.TASK_LIST:
-            # Long press on task list opens settings
-            ctx.setting_index = 0
-            ctx.state = ViewState.SETTINGS
+        if ctx.state == ViewState.DASHBOARD:
+            # Already at home, do nothing
+            pass
+
+        elif ctx.state == ViewState.TASK_LIST:
+            # Long press on task list goes back to dashboard
+            ctx.filtered_urgency = None
+            ctx.state = ViewState.DASHBOARD
+            return "go_dashboard"
 
         elif ctx.state == ViewState.QR_CODE:
             # Go back to settings from QR code
             ctx.state = ViewState.SETTINGS
 
+        elif ctx.state == ViewState.SETTINGS:
+            # Go back to dashboard from settings
+            ctx.state = ViewState.DASHBOARD
+            return "go_dashboard"
+
         elif ctx.state in (ViewState.TASK_ACTIONS, ViewState.DELETE_CONFIRM,
-                          ViewState.TASK_HISTORY, ViewState.SETTINGS):
+                          ViewState.TASK_HISTORY):
             # Go back to task list
             ctx.state = ViewState.TASK_LIST
 
@@ -238,12 +295,28 @@ class ViewNavigator:
             "state": ctx.state.name,
         }
 
-        if ctx.state == ViewState.TASK_LIST and ctx.current_task:
+        if ctx.state == ViewState.DASHBOARD:
             base.update({
-                "task": ctx.current_task.to_display_dict(),
-                "index": ctx.task_index,
-                "total": len(ctx.tasks),
+                "counts": ctx.task_counts,
+                "selected": ctx.dashboard_index,
             })
+
+        elif ctx.state == ViewState.TASK_LIST:
+            if ctx.current_task:
+                base.update({
+                    "task": ctx.current_task.to_display_dict(),
+                    "index": ctx.task_index,
+                    "total": len(ctx.tasks),
+                    "filtered": ctx.filtered_urgency,
+                })
+            else:
+                # Empty task list (filtered or overall)
+                base.update({
+                    "task": None,
+                    "index": 0,
+                    "total": 0,
+                    "filtered": ctx.filtered_urgency,
+                })
 
         elif ctx.state == ViewState.TASK_ACTIONS and ctx.current_task:
             base.update({

@@ -177,6 +177,25 @@ impl KioskController {
         Ok(())
     }
 
+    /// Render dashboard with metrics
+    fn render_dashboard(
+        &mut self,
+        overdue: u32,
+        today: u32,
+        week: u32,
+        total: u32,
+        selected: usize,
+    ) -> PyResult<()> {
+        self.renderer.render_dashboard(overdue, today, week, total, selected);
+        Ok(())
+    }
+
+    /// Render empty filtered list message
+    fn render_empty_filtered(&mut self, filter_name: &str) -> PyResult<()> {
+        self.renderer.render_empty_filtered(filter_name);
+        Ok(())
+    }
+
     /// Render QR code screen for web access
     fn render_qr_code(&mut self, url: &str) -> PyResult<()> {
         self.renderer.render_qr_code(url);

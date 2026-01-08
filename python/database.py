@@ -222,3 +222,39 @@ class Database:
         """Get most recent completion for a task"""
         history = self.get_task_history(task_id, limit=1)
         return history[0] if history else None
+
+    def get_task_counts(self) -> dict:
+        """Get task counts by urgency category for dashboard"""
+        tasks = self.get_all_tasks()
+        counts = {
+            "overdue": 0,
+            "today": 0,
+            "week": 0,  # Due within 7 days (including today and overdue)
+            "total": len(tasks),
+        }
+
+        for task in tasks:
+            days = task.days_until_due
+            if days < 0:
+                counts["overdue"] += 1
+                counts["week"] += 1  # Overdue counts toward week
+            elif days == 0:
+                counts["today"] += 1
+                counts["week"] += 1  # Today counts toward week
+            elif days <= 7:
+                counts["week"] += 1
+
+        return counts
+
+    def get_tasks_by_urgency(self, urgency: str) -> List[Task]:
+        """Get tasks filtered by urgency category"""
+        tasks = self.get_all_tasks(sort_by_due=True)
+
+        if urgency == "overdue":
+            return [t for t in tasks if t.days_until_due < 0]
+        elif urgency == "today":
+            return [t for t in tasks if t.days_until_due == 0]
+        elif urgency == "week":
+            return [t for t in tasks if t.days_until_due <= 7]
+        else:  # "total" or any other value returns all
+            return tasks
