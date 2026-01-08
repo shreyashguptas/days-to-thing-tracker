@@ -178,26 +178,31 @@ class Database:
                 (task_id, now.isoformat(), days_since_last),
             )
 
-        # Calculate next due date based on recurrence
-        next_due = self._calculate_next_due(task.recurrence_type, task.recurrence_value)
+        # Calculate next due date from the PREVIOUS due date (fixed schedule)
+        # This maintains the original cycle rather than resetting from today
+        next_due = self._calculate_next_due_from_date(
+            task.next_due_date,
+            task.recurrence_type,
+            task.recurrence_value
+        )
 
         return self.update_task(task_id, next_due_date=next_due)
 
-    def _calculate_next_due(self, recurrence_type: RecurrenceType, value: int) -> date:
-        """Calculate next due date from today based on recurrence"""
-        today = date.today()
-
+    def _calculate_next_due_from_date(
+        self, from_date: date, recurrence_type: RecurrenceType, value: int
+    ) -> date:
+        """Calculate next due date from a given date based on recurrence"""
         if recurrence_type == RecurrenceType.DAILY:
-            return today + timedelta(days=value)
+            return from_date + timedelta(days=value)
         elif recurrence_type == RecurrenceType.WEEKLY:
-            return today + timedelta(weeks=value)
+            return from_date + timedelta(weeks=value)
         elif recurrence_type == RecurrenceType.MONTHLY:
             # Add months (approximate with 30 days)
-            return today + timedelta(days=value * 30)
+            return from_date + timedelta(days=value * 30)
         elif recurrence_type == RecurrenceType.YEARLY:
-            return today + timedelta(days=value * 365)
+            return from_date + timedelta(days=value * 365)
 
-        return today + timedelta(days=value)
+        return from_date + timedelta(days=value)
 
     def get_task_history(self, task_id: int, limit: int = 50) -> List[CompletionRecord]:
         """Get completion history for a task"""

@@ -236,8 +236,9 @@
             border-radius: 50%;
             background: linear-gradient(135deg, var(--accent-coral) 0%, var(--accent-purple) 100%);
             color: white;
-            font-size: 2rem;
+            font-size: 32px;
             font-weight: 300;
+            line-height: 1;
             border: none;
             cursor: pointer;
             box-shadow: 0 6px 24px rgba(255, 138, 128, 0.4);
@@ -245,6 +246,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 0;
+            padding-bottom: 3px;
         }
 
         .add-btn:hover {
@@ -263,15 +266,18 @@
             background: rgba(74, 74, 74, 0.4);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
-            padding: 20px;
+            padding: 16px;
             z-index: 100;
+            overflow-y: auto;
         }
 
         .modal.active {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
             animation: fadeIn 0.2s ease;
+            padding-top: 40px;
+            padding-bottom: 40px;
         }
 
         @keyframes fadeIn {
@@ -281,12 +287,13 @@
 
         .modal-content {
             background: var(--bg-card);
-            padding: 28px;
+            padding: 24px 20px;
             border-radius: 24px;
             width: 100%;
-            max-width: 400px;
+            max-width: 380px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
             animation: slideUp 0.3s ease;
+            margin: auto;
         }
 
         @keyframes slideUp {
@@ -301,20 +308,21 @@
         }
 
         .modal h2 {
-            margin-bottom: 24px;
+            margin-bottom: 20px;
             font-weight: 800;
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             color: var(--text-primary);
+            text-align: center;
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
             font-weight: 600;
             color: var(--text-secondary);
         }
@@ -322,14 +330,28 @@
         .form-group input,
         .form-group select {
             width: 100%;
-            padding: 14px 16px;
+            padding: 12px 14px;
             border: 2px solid rgba(0, 0, 0, 0.08);
-            border-radius: 14px;
+            border-radius: 12px;
             background: var(--bg-warm);
             color: var(--text-primary);
-            font-size: 1rem;
+            font-size: 16px;
             font-family: inherit;
             transition: all 0.2s ease;
+            -webkit-appearance: none;
+            appearance: none;
+            box-sizing: border-box;
+        }
+
+        .form-group select {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238B8B8B' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+
+        .form-group input[type="date"] {
+            min-height: 48px;
         }
 
         .form-group input:focus,
@@ -343,24 +365,50 @@
             color: var(--text-light);
         }
 
+        .form-hint {
+            font-size: 0.75rem;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+
         .recurrence-row {
             display: flex;
             gap: 10px;
         }
 
         .recurrence-row input {
-            width: 90px;
+            width: 80px;
+            flex-shrink: 0;
             text-align: center;
         }
 
         .recurrence-row select {
             flex: 1;
+            min-width: 0;
+        }
+
+        .date-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .date-row .form-group {
+            flex: 1;
+            min-width: 0;
+            margin-bottom: 0;
+        }
+
+        .calculated-date {
+            background: rgba(100, 216, 203, 0.15);
+            border-color: var(--accent-teal);
+            color: var(--text-primary);
+            font-weight: 600;
         }
 
         .modal-actions {
             display: flex;
-            gap: 12px;
-            margin-top: 28px;
+            gap: 10px;
+            margin-top: 24px;
         }
 
         .btn-cancel {
@@ -429,6 +477,43 @@
                 padding: 10px 12px;
                 font-size: 0.85rem;
             }
+
+            .modal.active {
+                padding: 20px 12px;
+            }
+
+            .modal-content {
+                padding: 20px 16px;
+            }
+
+            .recurrence-row {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .recurrence-row input {
+                width: 100%;
+            }
+
+            .date-row {
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .date-row .form-group {
+                margin-bottom: 0;
+            }
+        }
+
+        /* Ensure date inputs work well on iOS */
+        input[type="date"] {
+            -webkit-appearance: none;
+            appearance: none;
+            position: relative;
+        }
+
+        input[type="date"]::-webkit-date-and-time-value {
+            text-align: left;
         }
     </style>
 </head>
@@ -462,8 +547,14 @@
                 </div>
             </div>
             <div class="form-group">
+                <label>When did you start? (or last do it)</label>
+                <input type="date" id="start-date">
+                <div class="form-hint">Set this to backdate when the cycle started</div>
+            </div>
+            <div class="form-group">
                 <label>Next due date</label>
-                <input type="date" id="next-due">
+                <input type="date" id="next-due" class="calculated-date">
+                <div class="form-hint" id="due-hint">Auto-calculated from start date + interval</div>
             </div>
             <div class="modal-actions">
                 <button class="btn btn-cancel" onclick="hideModal()">Cancel</button>
@@ -552,6 +643,74 @@
             return date.toLocaleDateString('en-US', options);
         }
 
+        // Calculate next due date from start date + recurrence
+        function calculateNextDue() {
+            const startDate = document.getElementById('start-date').value;
+            const recurrenceValue = parseInt(document.getElementById('recurrence-value').value) || 0;
+            const recurrenceType = document.getElementById('recurrence-type').value;
+
+            if (!startDate || recurrenceValue <= 0) return;
+
+            const start = new Date(startDate + 'T00:00:00');
+            let nextDue = new Date(start);
+
+            switch (recurrenceType) {
+                case 'days':
+                    nextDue.setDate(start.getDate() + recurrenceValue);
+                    break;
+                case 'weeks':
+                    nextDue.setDate(start.getDate() + (recurrenceValue * 7));
+                    break;
+                case 'months':
+                    nextDue.setMonth(start.getMonth() + recurrenceValue);
+                    break;
+            }
+
+            // Format as YYYY-MM-DD for input
+            const nextDueStr = nextDue.toISOString().split('T')[0];
+            document.getElementById('next-due').value = nextDueStr;
+
+            // Update hint
+            const daysUntil = Math.ceil((nextDue - new Date()) / (1000 * 60 * 60 * 24));
+            const hint = document.getElementById('due-hint');
+            if (daysUntil < 0) {
+                hint.textContent = `${Math.abs(daysUntil)} days overdue`;
+                hint.style.color = 'var(--urgency-overdue)';
+            } else if (daysUntil === 0) {
+                hint.textContent = 'Due today!';
+                hint.style.color = 'var(--urgency-soon)';
+            } else {
+                hint.textContent = `Due in ${daysUntil} days`;
+                hint.style.color = 'var(--accent-teal)';
+            }
+        }
+
+        // Calculate start date from next due date (reverse calculation)
+        function calculateStartDate() {
+            const nextDue = document.getElementById('next-due').value;
+            const recurrenceValue = parseInt(document.getElementById('recurrence-value').value) || 0;
+            const recurrenceType = document.getElementById('recurrence-type').value;
+
+            if (!nextDue || recurrenceValue <= 0) return;
+
+            const due = new Date(nextDue + 'T00:00:00');
+            let start = new Date(due);
+
+            switch (recurrenceType) {
+                case 'days':
+                    start.setDate(due.getDate() - recurrenceValue);
+                    break;
+                case 'weeks':
+                    start.setDate(due.getDate() - (recurrenceValue * 7));
+                    break;
+                case 'months':
+                    start.setMonth(due.getMonth() - recurrenceValue);
+                    break;
+            }
+
+            document.getElementById('start-date').value = start.toISOString().split('T')[0];
+        }
+
         async function completeTask(id) {
             await fetch(`${API}/tasks/${id}/complete`, { method: 'POST' });
             loadTasks();
@@ -570,7 +729,14 @@
             document.getElementById('task-name').value = '';
             document.getElementById('recurrence-value').value = '7';
             document.getElementById('recurrence-type').value = 'days';
-            document.getElementById('next-due').value = new Date().toISOString().split('T')[0];
+
+            // Set start date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('start-date').value = today;
+
+            // Calculate next due from today + 7 days
+            calculateNextDue();
+
             document.getElementById('modal').classList.add('active');
         }
 
@@ -583,6 +749,24 @@
             document.getElementById('recurrence-value').value = task.recurrenceValue;
             document.getElementById('recurrence-type').value = task.recurrenceType;
             document.getElementById('next-due').value = task.nextDueDate;
+
+            // Calculate what the start date would have been
+            calculateStartDate();
+
+            // Update the hint
+            const hint = document.getElementById('due-hint');
+            const daysUntil = task.daysUntilDue;
+            if (daysUntil < 0) {
+                hint.textContent = `${Math.abs(daysUntil)} days overdue`;
+                hint.style.color = 'var(--urgency-overdue)';
+            } else if (daysUntil === 0) {
+                hint.textContent = 'Due today!';
+                hint.style.color = 'var(--urgency-soon)';
+            } else {
+                hint.textContent = `Due in ${daysUntil} days`;
+                hint.style.color = 'var(--accent-teal)';
+            }
+
             document.getElementById('modal').classList.add('active');
         }
 
@@ -621,6 +805,27 @@
             hideModal();
             loadTasks();
         }
+
+        // Event listeners for auto-calculation
+        document.getElementById('start-date').addEventListener('change', calculateNextDue);
+        document.getElementById('recurrence-value').addEventListener('input', calculateNextDue);
+        document.getElementById('recurrence-type').addEventListener('change', calculateNextDue);
+        document.getElementById('next-due').addEventListener('change', function() {
+            // When user manually changes next due, update the hint but don't change start date
+            const nextDue = new Date(this.value + 'T00:00:00');
+            const daysUntil = Math.ceil((nextDue - new Date()) / (1000 * 60 * 60 * 24));
+            const hint = document.getElementById('due-hint');
+            if (daysUntil < 0) {
+                hint.textContent = `${Math.abs(daysUntil)} days overdue`;
+                hint.style.color = 'var(--urgency-overdue)';
+            } else if (daysUntil === 0) {
+                hint.textContent = 'Due today!';
+                hint.style.color = 'var(--urgency-soon)';
+            } else {
+                hint.textContent = `Due in ${daysUntil} days`;
+                hint.style.color = 'var(--accent-teal)';
+            }
+        });
 
         // Close modal when clicking outside
         document.getElementById('modal').addEventListener('click', function(e) {
