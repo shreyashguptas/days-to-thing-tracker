@@ -312,47 +312,49 @@ impl Renderer {
         // Separator
         self.display.hline(10, 16, self.display.width() - 20, Theme::CARD_BORDER);
 
-        // Menu items
-        let items = [
-            ("Screen Timeout", screen_timeout_enabled),
-        ];
-
         let start_y = 30;
-        let item_height = 20;
+        let item_height = 18;
 
-        for (i, (label, enabled)) in items.iter().enumerate() {
-            let y = start_y + (i as u32 * item_height);
-            let is_selected = i == selected;
-
-            if is_selected {
-                self.display.fill_rect(4, y - 2, self.display.width() - 8, item_height - 2, Theme::SELECTION_BG);
-                self.draw_text(8, y, ">", Theme::ACCENT, 1);
-            }
-
-            let color = if is_selected { Theme::TEXT_PRIMARY } else { Theme::TEXT_MUTED };
-            self.draw_text(20, y, label, color, 1);
-
-            // Toggle indicator
-            let toggle_text = if *enabled { "[ON]" } else { "[OFF]" };
-            let toggle_color = if *enabled { Theme::SUCCESS } else { Theme::TEXT_MUTED };
-            let toggle_x = self.display.width() - self.text_width(toggle_text, 1) - 8;
-            self.draw_text(toggle_x, y, toggle_text, toggle_color, 1);
+        // Item 0: Manage Tasks (no toggle, opens QR code)
+        let manage_y = start_y;
+        let manage_selected = selected == 0;
+        if manage_selected {
+            self.display.fill_rect(4, manage_y - 2, self.display.width() - 8, item_height - 2, Theme::SELECTION_BG);
+            self.draw_text(8, manage_y, ">", Theme::ACCENT, 1);
         }
+        let manage_color = if manage_selected { Theme::TEXT_PRIMARY } else { Theme::TEXT_MUTED };
+        self.draw_text(20, manage_y, "Manage Tasks", manage_color, 1);
+        // Arrow indicator to show it opens something
+        let arrow_x = self.display.width() - self.text_width(">", 1) - 8;
+        self.draw_text(arrow_x, manage_y, ">", Theme::TEXT_MUTED, 1);
 
-        // Back option
-        let back_y = start_y + (items.len() as u32 * item_height);
-        let back_selected = selected == items.len();
+        // Item 1: Screen Timeout (toggle)
+        let timeout_y = start_y + item_height;
+        let timeout_selected = selected == 1;
+        if timeout_selected {
+            self.display.fill_rect(4, timeout_y - 2, self.display.width() - 8, item_height - 2, Theme::SELECTION_BG);
+            self.draw_text(8, timeout_y, ">", Theme::ACCENT, 1);
+        }
+        let timeout_color = if timeout_selected { Theme::TEXT_PRIMARY } else { Theme::TEXT_MUTED };
+        self.draw_text(20, timeout_y, "Screen Timeout", timeout_color, 1);
+        // Toggle indicator
+        let toggle_text = if screen_timeout_enabled { "[ON]" } else { "[OFF]" };
+        let toggle_color = if screen_timeout_enabled { Theme::SUCCESS } else { Theme::TEXT_MUTED };
+        let toggle_x = self.display.width() - self.text_width(toggle_text, 1) - 8;
+        self.draw_text(toggle_x, timeout_y, toggle_text, toggle_color, 1);
 
+        // Item 2: Back
+        let back_y = start_y + (2 * item_height);
+        let back_selected = selected == 2;
         if back_selected {
             self.display.fill_rect(4, back_y - 2, self.display.width() - 8, item_height - 2, Theme::SELECTION_BG);
             self.draw_text(8, back_y, ">", Theme::ACCENT, 1);
         }
-
         let back_color = if back_selected { Theme::TEXT_PRIMARY } else { Theme::TEXT_MUTED };
         self.draw_text(20, back_y, "Back", back_color, 1);
 
         // Hint
-        self.draw_text_centered(h - 10, "press to toggle", Theme::TEXT_MUTED, 1);
+        self.draw_text_centered(h - 10, "press to select", Theme::TEXT_MUTED, 1);
 
         self.display.flush();
     }
@@ -363,6 +365,64 @@ impl Renderer {
 
         self.draw_text_centered(40, "No tasks", Theme::TEXT_PRIMARY, 2);
         self.draw_text_centered(70, "Add tasks via web", Theme::TEXT_MUTED, 1);
+
+        self.display.flush();
+    }
+
+    /// Render QR code screen for web access
+    pub fn render_qr_code(&mut self, url: &str) {
+        use qrcode::QrCode;
+
+        self.clear();
+
+        let h = self.display.height();
+        let w = self.display.width();
+
+        // Header
+        self.draw_text_centered(2, "Scan to manage", Theme::TEXT_PRIMARY, 1);
+
+        // Generate QR code
+        if let Ok(code) = QrCode::new(url.as_bytes()) {
+            let qr_size = code.width();
+
+            // Calculate pixel size to fit on screen (leave room for text)
+            // Available height: ~100px (128 - header - footer)
+            // Available width: 160px
+            let available = 96u32;
+            let pixel_size = (available / qr_size as u32).max(1);
+            let qr_pixels = qr_size as u32 * pixel_size;
+
+            // Center the QR code
+            let start_x = (w - qr_pixels) / 2;
+            let start_y = 14;
+
+            // Draw QR code with white background
+            self.display.fill_rect(
+                start_x.saturating_sub(4),
+                start_y.saturating_sub(4),
+                qr_pixels + 8,
+                qr_pixels + 8,
+                Theme::TEXT_PRIMARY,
+            );
+
+            // Draw QR modules
+            for (y, row) in code.to_colors().chunks(qr_size).enumerate() {
+                for (x, &color) in row.iter().enumerate() {
+                    if color == qrcode::Color::Dark {
+                        self.display.fill_rect(
+                            start_x + (x as u32 * pixel_size),
+                            start_y + (y as u32 * pixel_size),
+                            pixel_size,
+                            pixel_size,
+                            Theme::BACKGROUND,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Hint at bottom
+        self.draw_text_centered(h - 10, "long press: back", Theme::TEXT_MUTED, 1);
 
         self.display.flush();
     }

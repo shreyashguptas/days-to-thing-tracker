@@ -33,6 +33,15 @@ COMPLETING_DURATION = 0.5   # Animation duration in seconds
 API_HOST = "0.0.0.0"
 API_PORT = 8080
 
+# Web URL for QR code (defaults to hostname:port)
+def get_web_url():
+    """Get the web URL for QR code scanning"""
+    import socket
+    hostname = os.environ.get("KIOSK_HOSTNAME", socket.gethostname())
+    return os.environ.get("KIOSK_WEB_URL", f"http://{hostname}:{API_PORT}")
+
+WEB_URL = get_web_url()
+
 # SMB Backup (optional)
 SMB_BACKUP_ENABLED = os.environ.get("SMB_BACKUP_ENABLED", "false").lower() == "true"
 SMB_SHARE_PATH = os.environ.get("SMB_SHARE_PATH", "")

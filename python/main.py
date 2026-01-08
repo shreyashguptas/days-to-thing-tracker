@@ -101,6 +101,8 @@ class KioskApp:
             self._load_history()
         elif action == "toggle_timeout":
             self._toggle_screen_timeout()
+        elif action == "show_qr":
+            pass  # QR code view handled in render
 
     def _complete_current_task(self):
         """Complete the current task with animation"""
@@ -220,6 +222,9 @@ class KioskApp:
                     render_data["selected"],
                     render_data["screen_timeout_enabled"],
                 )
+
+            elif state == "QR_CODE":
+                self.controller.render_qr_code(config.WEB_URL)
 
             elif state == "EMPTY":
                 self.controller.render_empty()

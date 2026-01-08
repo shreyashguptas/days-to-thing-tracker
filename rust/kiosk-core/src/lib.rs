@@ -177,6 +177,12 @@ impl KioskController {
         Ok(())
     }
 
+    /// Render QR code screen for web access
+    fn render_qr_code(&mut self, url: &str) -> PyResult<()> {
+        self.renderer.render_qr_code(url);
+        Ok(())
+    }
+
     /// Turn backlight on
     fn backlight_on(&mut self) -> PyResult<()> {
         self.encoder.set_backlight(true);

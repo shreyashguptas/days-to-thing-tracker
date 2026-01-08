@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Days Tracker</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 16px;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 16px; text-align: center; }
+        .tasks { display: flex; flex-direction: column; gap: 12px; }
+        .task {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 16px;
+            border-left: 4px solid #0f4c75;
+        }
+        .task.overdue { border-color: #e94560; }
+        .task.due-soon { border-color: #f39c12; }
+        .task.on-track { border-color: #00b894; }
+        .task-header { display: flex; justify-content: space-between; align-items: start; }
+        .task-name { font-weight: 600; font-size: 1.1rem; }
+        .task-days { font-size: 1.5rem; font-weight: 700; text-align: right; }
+        .task-days small { display: block; font-size: 0.7rem; font-weight: 400; color: #888; }
+        .task-due { font-size: 0.85rem; color: #888; margin-top: 4px; }
+        .task-actions { margin-top: 12px; display: flex; gap: 8px; }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            flex: 1;
+        }
+        .btn-done { background: #00b894; color: white; }
+        .btn-delete { background: #e94560; color: white; }
+        .btn-edit { background: #0f4c75; color: white; }
+        .add-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: #0f4c75;
+            color: white;
+            font-size: 2rem;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            z-index: 100;
+        }
+        .modal.active { display: flex; align-items: center; justify-content: center; }
+        .modal-content {
+            background: #16213e;
+            padding: 24px;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 400px;
+        }
+        .modal h2 { margin-bottom: 16px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: #888; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #1a1a2e;
+            color: white;
+            font-size: 1rem;
+        }
+        .modal-actions { display: flex; gap: 12px; margin-top: 20px; }
+        .btn-cancel { background: #333; color: #888; }
+        .btn-save { background: #00b894; color: white; }
+        .empty { text-align: center; padding: 40px; color: #666; }
+    </style>
+</head>
+<body>
+    <h1>Days Tracker</h1>
+    <div class="tasks" id="tasks"></div>
+    <button class="add-btn" onclick="showAddModal()">+</button>
+
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <h2 id="modal-title">Add Task</h2>
+            <input type="hidden" id="task-id">
+            <div class="form-group">
+                <label>Task Name</label>
+                <input type="text" id="task-name" placeholder="e.g., Water plants">
+            </div>
+            <div class="form-group">
+                <label>Repeat Every</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="number" id="recurrence-value" value="7" min="1" style="width: 80px;">
+                    <select id="recurrence-type" style="flex: 1;">
+                        <option value="days">Days</option>
+                        <option value="weeks">Weeks</option>
+                        <option value="months">Months</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Next Due Date</label>
+                <input type="date" id="next-due">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="hideModal()">Cancel</button>
+                <button class="btn btn-save" onclick="saveTask()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = '/api';
+        let tasks = [];
+
+        async function loadTasks() {
+            const res = await fetch(`${API}/tasks`);
+            tasks = await res.json();
+            renderTasks();
+        }
+
+        function renderTasks() {
+            const el = document.getElementById('tasks');
+            if (tasks.length === 0) {
+                el.innerHTML = '<div class="empty">No tasks yet. Tap + to add one.</div>';
+                return;
+            }
+            el.innerHTML = tasks.map(t => {
+                const urgency = t.daysUntilDue < 0 ? 'overdue' : t.daysUntilDue <= 3 ? 'due-soon' : 'on-track';
+                const days = Math.abs(t.daysUntilDue);
+                const label = t.daysUntilDue < 0 ? 'overdue' : t.daysUntilDue === 1 ? 'day left' : 'days left';
+                return `
+                    <div class="task ${urgency}">
+                        <div class="task-header">
+                            <div>
+                                <div class="task-name">${escapeHtml(t.name)}</div>
+                                <div class="task-due">Due: ${t.nextDueDate}</div>
+                            </div>
+                            <div class="task-days">${days}<small>${label}</small></div>
+                        </div>
+                        <div class="task-actions">
+                            <button class="btn btn-done" onclick="completeTask(${t.id})">Done</button>
+                            <button class="btn btn-edit" onclick="editTask(${t.id})">Edit</button>
+                            <button class="btn btn-delete" onclick="deleteTask(${t.id})">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function completeTask(id) {
+            await fetch(`${API}/tasks/${id}/complete`, { method: 'POST' });
+            loadTasks();
+        }
+
+        async function deleteTask(id) {
+            if (confirm('Delete this task?')) {
+                await fetch(`${API}/tasks/${id}`, { method: 'DELETE' });
+                loadTasks();
+            }
+        }
+
+        function showAddModal() {
+            document.getElementById('modal-title').textContent = 'Add Task';
+            document.getElementById('task-id').value = '';
+            document.getElementById('task-name').value = '';
+            document.getElementById('recurrence-value').value = '7';
+            document.getElementById('recurrence-type').value = 'days';
+            document.getElementById('next-due').value = new Date().toISOString().split('T')[0];
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function editTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if (!task) return;
+            document.getElementById('modal-title').textContent = 'Edit Task';
+            document.getElementById('task-id').value = id;
+            document.getElementById('task-name').value = task.name;
+            document.getElementById('recurrence-value').value = task.recurrenceValue;
+            document.getElementById('recurrence-type').value = task.recurrenceType;
+            document.getElementById('next-due').value = task.nextDueDate;
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function hideModal() {
+            document.getElementById('modal').classList.remove('active');
+        }
+
+        async function saveTask() {
+            const id = document.getElementById('task-id').value;
+            const data = {
+                name: document.getElementById('task-name').value,
+                recurrenceType: document.getElementById('recurrence-type').value,
+                recurrenceValue: parseInt(document.getElementById('recurrence-value').value),
+                nextDueDate: document.getElementById('next-due').value
+            };
+
+            if (!data.name) {
+                alert('Please enter a task name');
+                return;
+            }
+
+            if (id) {
+                await fetch(`${API}/tasks/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+            } else {
+                await fetch(`${API}/tasks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+            }
+
+            hideModal();
+            loadTasks();
+        }
+
+        loadTasks();
+    </script>
+</body>
+</html>

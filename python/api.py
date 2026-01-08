@@ -9,7 +9,7 @@ Usage:
     python api.py
 """
 from datetime import date, datetime
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
 
 import config
@@ -18,6 +18,12 @@ from models import RecurrenceType
 
 app = Flask(__name__)
 CORS(app)
+
+
+@app.route("/")
+def index():
+    """Serve the web UI"""
+    return render_template("index.html")
 
 db = Database(config.DATABASE_PATH)
 

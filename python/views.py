@@ -16,6 +16,7 @@ class ViewState(Enum):
     COMPLETING = auto()
     TASK_HISTORY = auto()
     SETTINGS = auto()
+    QR_CODE = auto()
     EMPTY = auto()
 
 
@@ -29,6 +30,7 @@ class ActionItem(Enum):
 
 class SettingItem(Enum):
     """Settings menu items"""
+    MANAGE_TASKS = "Manage Tasks"
     SCREEN_TIMEOUT = "Screen Timeout"
     BACK = "Back"
 
@@ -187,7 +189,11 @@ class ViewNavigator:
             settings = list(SettingItem)
             setting = settings[ctx.setting_index]
 
-            if setting == SettingItem.SCREEN_TIMEOUT:
+            if setting == SettingItem.MANAGE_TASKS:
+                ctx.state = ViewState.QR_CODE
+                return "show_qr"
+
+            elif setting == SettingItem.SCREEN_TIMEOUT:
                 ctx.screen_timeout_enabled = not ctx.screen_timeout_enabled
                 return "toggle_timeout"
 
@@ -203,6 +209,10 @@ class ViewNavigator:
         if ctx.state == ViewState.TASK_LIST:
             # Long press on task list opens settings
             ctx.setting_index = 0
+            ctx.state = ViewState.SETTINGS
+
+        elif ctx.state == ViewState.QR_CODE:
+            # Go back to settings from QR code
             ctx.state = ViewState.SETTINGS
 
         elif ctx.state in (ViewState.TASK_ACTIONS, ViewState.DELETE_CONFIRM,

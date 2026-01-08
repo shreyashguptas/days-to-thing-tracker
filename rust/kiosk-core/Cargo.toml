@@ -21,6 +21,9 @@ framebuffer = "0.3"
 # Error handling
 thiserror = "1.0"
 
+# QR code generation
+qrcode = "0.14"
+
 [profile.release]
 opt-level = 3
 lto = true
