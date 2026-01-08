@@ -14,6 +14,10 @@ Environment=KIOSK_DATA_DIR=/home/shreyash/days-to-thing-tracker/data
 
 # Clear the framebuffer before starting (removes login screen)
 ExecStartPre=/bin/sh -c 'dd if=/dev/zero of=/dev/fb0 bs=40960 count=1 2>/dev/null || true'
+# Disable cursor blinking and hide cursor on framebuffer console
+ExecStartPre=/bin/sh -c 'echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'setterm --cursor off --blank 0 > /dev/tty1 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'echo -ne "\033[?25l\033[?1c" > /dev/tty1 2>/dev/null || true'
 
 ExecStart=/home/shreyash/days-to-thing-tracker/venv/bin/python /home/shreyash/days-to-thing-tracker/python/main.py
 Restart=always

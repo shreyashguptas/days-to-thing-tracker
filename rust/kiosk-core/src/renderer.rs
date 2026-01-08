@@ -394,7 +394,7 @@ impl Renderer {
 
             // Center the QR code
             let start_x = (w - qr_pixels) / 2;
-            let start_y = 14;
+            let start_y: u32 = 14;
 
             // Draw QR code with white background
             self.display.fill_rect(
