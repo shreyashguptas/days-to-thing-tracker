@@ -50,3 +50,5 @@ build/
 
 # Local development
 CLAUDE.md
+*.claude/*.md
+.claude/agents/compiler-verifier.md
