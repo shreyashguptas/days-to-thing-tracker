@@ -285,9 +285,45 @@ Long press from task list to access:
 
 ## Updating / Deploying Changes
 
-When you make changes to the code and push to GitHub, follow these steps on the Pi:
+### Using the Deploy Script (Recommended)
 
-### Quick Update (Python changes only)
+The easiest way to manage the kiosk is with the interactive deploy script:
+
+```bash
+ssh youruser@daystracker.local
+cd ~/days-to-thing-tracker
+./deploy.sh
+```
+
+This shows a menu with options:
+
+```
+╔════════════════════════════════════════════╗
+║       Days Tracker Kiosk Deployment        ║
+╚════════════════════════════════════════════╝
+
+What would you like to do?
+
+  1) Quick Update     - Pull changes & restart services (Python only)
+  2) Full Update      - Pull changes, rebuild Rust, restart services
+  3) Fresh Install    - First-time setup (installs everything)
+  4) Restart Services - Just restart kiosk and API services
+  5) View Logs        - Show recent kiosk logs
+  6) Check Status     - Show service status and system info
+  7) Boot Config      - Show instructions for boot configuration
+  8) Exit
+```
+
+- **Option 1 (Quick Update)**: Use after Python-only changes
+- **Option 2 (Full Update)**: Use after Rust code changes (takes 5-10 min)
+- **Option 3 (Fresh Install)**: Use on a new Pi or to reinstall everything
+- **Option 7 (Boot Config)**: Shows what to add to config.txt and cmdline.txt
+
+### Manual Commands (Alternative)
+
+If you prefer running commands manually:
+
+#### Quick Update (Python changes only)
 
 ```bash
 ssh youruser@daystracker.local
@@ -301,7 +337,7 @@ sudo systemctl restart kiosk-tracker
 sudo systemctl restart kiosk-api
 ```
 
-### Full Update (Rust changes)
+#### Full Update (Rust changes)
 
 ```bash
 ssh youruser@daystracker.local
