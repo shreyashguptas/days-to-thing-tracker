@@ -77,7 +77,8 @@ build_rust() {
     echo -e "${BLUE}Building Rust library (this may take 5-10 minutes)...${NC}"
     cd "$RUST_DIR"
     maturin build --release
-    pip install target/wheels/*.whl --force-reinstall
+    # Wheel is built to workspace root target dir, not kiosk-core target dir
+    pip install "$SCRIPT_DIR"/target/wheels/kiosk_core-*.whl --force-reinstall
     cd "$SCRIPT_DIR"
     echo -e "${GREEN}✓ Rust library built and installed${NC}"
 }
