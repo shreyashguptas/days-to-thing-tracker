@@ -287,42 +287,38 @@ show_boot_config() {
 
 # Main
 check_pi
+show_menu
 
-while true; do
-    show_menu
+case $choice in
+    1)
+        quick_update
+        ;;
+    2)
+        full_update
+        ;;
+    3)
+        fresh_install
+        ;;
+    4)
+        restart_services
+        ;;
+    5)
+        view_logs
+        ;;
+    6)
+        check_status
+        ;;
+    7)
+        show_boot_config
+        ;;
+    8)
+        echo "Goodbye!"
+        ;;
+    *)
+        echo -e "${RED}Invalid choice.${NC}"
+        exit 1
+        ;;
+esac
 
-    case $choice in
-        1)
-            quick_update
-            ;;
-        2)
-            full_update
-            ;;
-        3)
-            fresh_install
-            ;;
-        4)
-            restart_services
-            ;;
-        5)
-            view_logs
-            ;;
-        6)
-            check_status
-            ;;
-        7)
-            show_boot_config
-            ;;
-        8)
-            echo "Goodbye!"
-            exit 0
-            ;;
-        *)
-            echo -e "${RED}Invalid choice. Please try again.${NC}"
-            ;;
-    esac
-
-    echo ""
-    read -p "Press Enter to continue..."
-    echo ""
-done
+echo ""
+echo -e "${GREEN}Done!${NC}"
