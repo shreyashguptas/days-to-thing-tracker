@@ -80,7 +80,6 @@ impl Renderer {
     pub fn render_task_card(&mut self, task: &TaskData, index: usize, total: usize) {
         self.clear();
 
-        let w = self.display.width();
         let h = self.display.height();
 
         // Urgency label at top

@@ -11,6 +11,7 @@ mod renderer;
 mod theme;
 
 use pyo3::prelude::*;
+use pyo3::types::PyModule;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -219,7 +220,7 @@ fn shutdown() {
 
 /// Python module definition
 #[pymodule]
-fn kiosk_core(_py: Python, m: &PyModule) -> PyResult<()> {
+fn kiosk_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<KioskController>()?;
     m.add_class::<TaskData>()?;
     m.add_class::<HistoryEntry>()?;

@@ -18,15 +18,6 @@ rppal = "0.17"
 # Framebuffer access
 framebuffer = "0.3"
 
-# Graphics primitives
-embedded-graphics = "0.8"
-
-# Font rendering
-embedded-graphics-core = "0.4"
-
-# Async runtime (lightweight)
-parking_lot = "0.12"
-
 # Error handling
 thiserror = "1.0"
 
