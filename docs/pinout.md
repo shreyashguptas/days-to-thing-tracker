@@ -68,9 +68,8 @@ Add these lines to `/boot/firmware/config.txt`:
 # Enable SPI
 dtparam=spi=on
 
-# ST7735 display overlay
-dtoverlay=st7735r,dc_pin=25,reset_pin=24,led_pin=18,speed=32000000,width=160,height=128
-
-# Rotate display if needed
-display_rotate=0
+# ST7735 display overlay (fbtft driver)
+dtoverlay=adafruit18,dc_pin=25,reset_pin=24,speed=32000000,rotate=90
 ```
+
+Note: The `adafruit18` overlay uses the fbtft driver which creates `/dev/fb0`. The `rotate=90` parameter sets the display to 160x128 (landscape).
