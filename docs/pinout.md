@@ -56,13 +56,13 @@
 
 2. **Backlight control**: GPIO 18 controls the display backlight. HIGH = on, LOW = off.
 
-3. **SPI Configuration**: The display uses SPI0. Enable SPI in `raspi-config` or add `dtparam=spi=on` to `/boot/config.txt`.
+3. **SPI Configuration**: The display uses SPI0. Enable SPI in `raspi-config` or add `dtparam=spi=on` to `/boot/firmware/config.txt`.
 
 4. **Framebuffer**: The display should appear as `/dev/fb0` or `/dev/fb1` when properly configured.
 
 ## Config.txt Additions
 
-Add these lines to `/boot/config.txt`:
+Add these lines to `/boot/firmware/config.txt`:
 
 ```
 # Enable SPI
