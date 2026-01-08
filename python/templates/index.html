@@ -527,6 +527,19 @@
 
     <button class="add-btn" onclick="showAddModal()">+</button>
 
+    <!-- Delete Confirmation Modal -->
+    <div class="modal" id="delete-modal">
+        <div class="modal-content" style="text-align: center;">
+            <h2 style="color: var(--urgency-overdue);">Delete Task?</h2>
+            <p id="delete-task-name" style="margin: 16px 0; color: var(--text-secondary);"></p>
+            <p style="font-size: 0.9rem; color: var(--text-light); margin-bottom: 20px;">This cannot be undone.</p>
+            <div class="modal-actions">
+                <button class="btn btn-cancel" onclick="hideDeleteModal()">Cancel</button>
+                <button class="btn btn-delete" onclick="confirmDelete()" style="flex: 1;">Delete</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal" id="modal">
         <div class="modal-content">
             <h2 id="modal-title">Add Task</h2>
@@ -540,9 +553,9 @@
                 <div class="recurrence-row">
                     <input type="number" id="recurrence-value" value="7" min="1">
                     <select id="recurrence-type">
-                        <option value="days">Days</option>
-                        <option value="weeks">Weeks</option>
-                        <option value="months">Months</option>
+                        <option value="daily">Days</option>
+                        <option value="weekly">Weeks</option>
+                        <option value="monthly">Months</option>
                     </select>
                 </div>
             </div>
@@ -655,13 +668,13 @@
             let nextDue = new Date(start);
 
             switch (recurrenceType) {
-                case 'days':
+                case 'daily':
                     nextDue.setDate(start.getDate() + recurrenceValue);
                     break;
-                case 'weeks':
+                case 'weekly':
                     nextDue.setDate(start.getDate() + (recurrenceValue * 7));
                     break;
-                case 'months':
+                case 'monthly':
                     nextDue.setMonth(start.getMonth() + recurrenceValue);
                     break;
             }
@@ -697,13 +710,13 @@
             let start = new Date(due);
 
             switch (recurrenceType) {
-                case 'days':
+                case 'daily':
                     start.setDate(due.getDate() - recurrenceValue);
                     break;
-                case 'weeks':
+                case 'weekly':
                     start.setDate(due.getDate() - (recurrenceValue * 7));
                     break;
-                case 'months':
+                case 'monthly':
                     start.setMonth(due.getMonth() - recurrenceValue);
                     break;
             }
@@ -716,9 +729,25 @@
             loadTasks();
         }
 
-        async function deleteTask(id) {
-            if (confirm('Delete this task?')) {
-                await fetch(`${API}/tasks/${id}`, { method: 'DELETE' });
+        let deleteTaskId = null;
+
+        function deleteTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if (!task) return;
+            deleteTaskId = id;
+            document.getElementById('delete-task-name').textContent = `"${task.name}"`;
+            document.getElementById('delete-modal').classList.add('active');
+        }
+
+        function hideDeleteModal() {
+            document.getElementById('delete-modal').classList.remove('active');
+            deleteTaskId = null;
+        }
+
+        async function confirmDelete() {
+            if (deleteTaskId) {
+                await fetch(`${API}/tasks/${deleteTaskId}`, { method: 'DELETE' });
+                hideDeleteModal();
                 loadTasks();
             }
         }
@@ -728,7 +757,7 @@
             document.getElementById('task-id').value = '';
             document.getElementById('task-name').value = '';
             document.getElementById('recurrence-value').value = '7';
-            document.getElementById('recurrence-type').value = 'days';
+            document.getElementById('recurrence-type').value = 'daily';
 
             // Set start date to today
             const today = new Date().toISOString().split('T')[0];
@@ -827,10 +856,16 @@
             }
         });
 
-        // Close modal when clicking outside
+        // Close modals when clicking outside
         document.getElementById('modal').addEventListener('click', function(e) {
             if (e.target === this) {
                 hideModal();
+            }
+        });
+
+        document.getElementById('delete-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                hideDeleteModal();
             }
         });
 
