@@ -58,16 +58,13 @@ impl Display {
         let fb = Framebuffer::new("/dev/fb0")
             .or_else(|_| Framebuffer::new("/dev/fb1"))?;
 
-        // Get display info
-        let var_info = fb.var_screen_info;
-        let fix_info = fb.fix_screen_info;
+        // Get display info (use references to avoid moving)
+        let actual_width = fb.var_screen_info.xres;
+        let actual_height = fb.var_screen_info.yres;
+        let bytes_per_pixel = fb.var_screen_info.bits_per_pixel / 8;
+        let line_length = fb.fix_screen_info.line_length;
 
-        let actual_width = var_info.xres;
-        let actual_height = var_info.yres;
-        let bytes_per_pixel = var_info.bits_per_pixel / 8;
-        let line_length = fix_info.line_length;
-
-        println!("  Framebuffer: {}x{} @ {}bpp", actual_width, actual_height, var_info.bits_per_pixel);
+        println!("  Framebuffer: {}x{} @ {}bpp", actual_width, actual_height, bytes_per_pixel * 8);
 
         // Use requested dimensions or actual if smaller
         let width = width.min(actual_width);

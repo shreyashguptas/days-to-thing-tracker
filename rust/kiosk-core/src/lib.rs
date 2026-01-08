@@ -60,6 +60,7 @@ pub struct HistoryEntry {
 #[pymethods]
 impl HistoryEntry {
     #[new]
+    #[pyo3(signature = (completed_at, days_since_last=None))]
     fn new(completed_at: String, days_since_last: Option<i32>) -> Self {
         Self { completed_at, days_since_last }
     }
