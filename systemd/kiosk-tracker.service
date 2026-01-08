@@ -1,6 +1,5 @@
 [Unit]
 Description=Days Tracker Kiosk Display
-# Start as early as possible - only need filesystem, not network
 After=local-fs.target
 Wants=local-fs.target
 
@@ -12,12 +11,14 @@ WorkingDirectory=/home/shreyash/days-to-thing-tracker
 Environment=PYTHONUNBUFFERED=1
 Environment=KIOSK_DATA_DIR=/home/shreyash/days-to-thing-tracker/data
 
-# Clear the framebuffer before starting (removes login screen)
+# Clear framebuffer
 ExecStartPre=/bin/sh -c 'dd if=/dev/zero of=/dev/fb0 bs=40960 count=1 2>/dev/null || true'
-# Disable cursor blinking and hide cursor on framebuffer console
+
+# Aggressively disable and hide the console cursor
 ExecStartPre=/bin/sh -c 'echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null || true'
-ExecStartPre=/bin/sh -c 'setterm --cursor off --blank 0 > /dev/tty1 2>/dev/null || true'
-ExecStartPre=/bin/sh -c 'echo -ne "\033[?25l\033[?1c" > /dev/tty1 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'for tty in /dev/tty0 /dev/tty1 /dev/console; do setterm --cursor off --blank 0 > $tty 2>/dev/null || true; done'
+ExecStartPre=/bin/sh -c 'for tty in /dev/tty0 /dev/tty1 /dev/console; do echo -ne "\033[?25l\033[?1c\033[?17;0;0c" > $tty 2>/dev/null || true; done'
+ExecStartPre=+/bin/sh -c 'echo 0 > /sys/class/vtconsole/vtcon1/bind 2>/dev/null || true'
 
 ExecStart=/home/shreyash/days-to-thing-tracker/venv/bin/python /home/shreyash/days-to-thing-tracker/python/main.py
 Restart=always

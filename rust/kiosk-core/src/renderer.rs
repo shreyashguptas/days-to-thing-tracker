@@ -1,6 +1,6 @@
 //! UI Renderer for kiosk display
 //!
-//! Renders all views matching the original web UI layout:
+//! Renders all views:
 //! - Task cards with countdown
 //! - Action menus
 //! - Confirmation dialogs
@@ -11,11 +11,8 @@ use crate::display::{Color, Display};
 use crate::theme::Theme;
 use crate::{HistoryEntry, TaskData};
 
-/// Simple bitmap font (5x7 pixels per character)
-/// Characters are stored as 7 bytes each, MSB first
+/// Bitmap font width (5 pixels per character)
 const FONT_WIDTH: u32 = 5;
-#[allow(dead_code)]
-const FONT_HEIGHT: u32 = 7; // Kept for documentation/future use
 
 /// Renderer handles all UI drawing operations
 pub struct Renderer {
@@ -50,7 +47,6 @@ impl Renderer {
         for (row, &bits) in bitmap.iter().enumerate() {
             for col in 0..FONT_WIDTH {
                 if (bits >> (FONT_WIDTH - 1 - col)) & 1 == 1 {
-                    // Draw scaled pixel
                     for sy in 0..scale {
                         for sx in 0..scale {
                             self.display.set_pixel(
@@ -82,26 +78,28 @@ impl Renderer {
         self.clear();
 
         let h = self.display.height();
+        let screen_width = self.display.width();
+        let max_chars_per_line = (screen_width / (FONT_WIDTH + 1)) as usize;
 
         // Urgency label at top
         let urgency_color = Theme::urgency_color(&task.urgency);
         let urgency_label = Theme::urgency_label(&task.urgency);
-        self.draw_text_centered(4, urgency_label, urgency_color, 1);
+        self.draw_text_centered(2, urgency_label, urgency_color, 1);
 
-        // Task name
-        let name = truncate_text(&task.name, 16);
-        self.draw_text_centered(16, &name, Theme::TEXT_PRIMARY, 1);
+        // Task name - wrap to multiple lines if needed
+        let name_lines = wrap_text(&task.name, max_chars_per_line.min(22));
+        let name_start_y = 12;
+        for (i, line) in name_lines.iter().take(2).enumerate() {
+            self.draw_text_centered(name_start_y + (i as u32 * 9), line, Theme::TEXT_PRIMARY, 1);
+        }
 
         // Large day count
-        let days_text = if task.days_until_due < 0 {
-            format!("{}", task.days_until_due.abs())
-        } else {
-            format!("{}", task.days_until_due)
-        };
+        let days_text = format!("{}", task.days_until_due.abs());
 
-        // Big number in center
+        // Big number in center - position depends on name lines
+        let number_y = if name_lines.len() > 1 { 34 } else { 30 };
         let scale = if days_text.len() <= 2 { 4 } else { 3 };
-        self.draw_text_centered(35, &days_text, urgency_color, scale);
+        self.draw_text_centered(number_y, &days_text, urgency_color, scale);
 
         // "DAYS LEFT" or "DAYS OVERDUE" label
         let days_label = if task.days_until_due < 0 {
@@ -111,17 +109,17 @@ impl Renderer {
         } else {
             "DAYS LEFT"
         };
-        self.draw_text_centered(70, days_label, Theme::TEXT_MUTED, 1);
+        let label_y = number_y + (scale * 7) + 4;
+        self.draw_text_centered(label_y, days_label, Theme::TEXT_MUTED, 1);
 
         // Due date
-        self.draw_text_centered(82, &task.next_due_date, Theme::TEXT_MUTED, 1);
+        self.draw_text_centered(label_y + 12, &task.next_due_date, Theme::TEXT_MUTED, 1);
 
         // Navigation hint at bottom
         let nav_text = format!("{}/{}", index + 1, total);
-        self.draw_text_centered(h - 20, &nav_text, Theme::TEXT_MUTED, 1);
+        self.draw_text_centered(h - 18, &nav_text, Theme::TEXT_MUTED, 1);
 
-        // Scroll indicator
-        self.draw_text_centered(h - 10, "scroll", Theme::TEXT_MUTED, 1);
+        self.draw_text_centered(h - 8, "scroll", Theme::TEXT_MUTED, 1);
 
         self.display.flush();
     }
@@ -131,16 +129,20 @@ impl Renderer {
         self.clear();
 
         let h = self.display.height();
+        let max_chars = 20;
 
-        // Task name at top
-        let name = truncate_text(task_name, 16);
-        self.draw_text_centered(4, &name, Theme::TEXT_PRIMARY, 1);
+        // Task name at top (wrap if needed)
+        let name_lines = wrap_text(task_name, max_chars);
+        for (i, line) in name_lines.iter().take(2).enumerate() {
+            self.draw_text_centered(4 + (i as u32 * 9), line, Theme::TEXT_PRIMARY, 1);
+        }
 
         // Separator line
-        self.display.hline(10, 16, self.display.width() - 20, Theme::CARD_BORDER);
+        let sep_y = if name_lines.len() > 1 { 24 } else { 16 };
+        self.display.hline(10, sep_y, self.display.width() - 20, Theme::CARD_BORDER);
 
         // Menu options
-        let start_y = 24;
+        let start_y = sep_y + 8;
         let item_height = 14;
 
         for (i, option) in options.iter().enumerate() {
@@ -148,15 +150,12 @@ impl Renderer {
             let is_selected = i == selected;
 
             if is_selected {
-                // Highlight background
                 self.display.fill_rect(4, y - 2, self.display.width() - 8, item_height, Theme::SELECTION_BG);
-                // Selection indicator
                 self.draw_text(8, y, ">", Theme::ACCENT, 1);
             }
 
             let color = if is_selected { Theme::TEXT_PRIMARY } else { Theme::TEXT_MUTED };
 
-            // Color code certain options
             let text_color = match option.to_lowercase().as_str() {
                 "delete" => Theme::DESTRUCTIVE,
                 "done" | "complete" => Theme::SUCCESS,
@@ -166,7 +165,6 @@ impl Renderer {
             self.draw_text(20, y, option, text_color, 1);
         }
 
-        // Hint at bottom
         self.draw_text_centered(h - 10, "press to select", Theme::TEXT_MUTED, 1);
 
         self.display.flush();
@@ -179,10 +177,10 @@ impl Renderer {
         let w = self.display.width();
         let h = self.display.height();
 
-        // Warning icon area
+        // Warning icon
         self.draw_text_centered(20, "!", Theme::DESTRUCTIVE, 3);
 
-        // Message (may need to wrap)
+        // Message (wrapped)
         let lines = wrap_text(message, 20);
         let start_y = 50;
         for (i, line) in lines.iter().enumerate() {
@@ -194,13 +192,11 @@ impl Renderer {
         let btn_width = 50;
         let gap = 20;
 
-        // Cancel button
         let cancel_x = (w - btn_width * 2 - gap) / 2;
         let cancel_color = if !confirm_selected { Theme::ACCENT } else { Theme::TEXT_MUTED };
         self.display.rect(cancel_x, btn_y, btn_width, 16, cancel_color);
         self.draw_text(cancel_x + 8, btn_y + 4, "Cancel", cancel_color, 1);
 
-        // Confirm button
         let confirm_x = cancel_x + btn_width + gap;
         let confirm_color = if confirm_selected { Theme::DESTRUCTIVE } else { Theme::TEXT_MUTED };
         self.display.rect(confirm_x, btn_y, btn_width, 16, confirm_color);
@@ -215,24 +211,22 @@ impl Renderer {
 
         let w = self.display.width();
 
-        // Task name
-        let name = truncate_text(task_name, 16);
-        self.draw_text_centered(20, &name, Theme::TEXT_PRIMARY, 1);
+        // Task name (wrapped)
+        let name_lines = wrap_text(task_name, 20);
+        for (i, line) in name_lines.iter().take(2).enumerate() {
+            self.draw_text_centered(20 + (i as u32 * 9), line, Theme::TEXT_PRIMARY, 1);
+        }
 
-        // Checkmark or progress
         if progress >= 1.0 {
-            self.draw_text_centered(50, "Done!", Theme::SUCCESS, 2);
+            self.draw_text_centered(55, "Done!", Theme::SUCCESS, 2);
         } else {
-            // Progress bar
             let bar_w = w - 40;
             let bar_h = 8;
             let bar_x = 20;
             let bar_y = 60;
 
-            // Background
             self.display.fill_rect(bar_x, bar_y, bar_w, bar_h, Theme::CARD_BORDER);
 
-            // Progress fill
             let fill_w = ((bar_w as f32) * progress) as u32;
             self.display.fill_rect(bar_x, bar_y, fill_w, bar_h, Theme::SUCCESS);
 
@@ -248,20 +242,21 @@ impl Renderer {
 
         let h = self.display.height();
 
-        // Header
         self.draw_text_centered(4, "History", Theme::TEXT_PRIMARY, 1);
 
-        // Task name
-        let name = truncate_text(task_name, 16);
+        // Task name (single line, truncated for history view)
+        let name = if task_name.len() > 18 {
+            format!("{}...", &task_name[..15])
+        } else {
+            task_name.to_string()
+        };
         self.draw_text_centered(14, &name, Theme::TEXT_MUTED, 1);
 
-        // Separator
         self.display.hline(10, 24, self.display.width() - 20, Theme::CARD_BORDER);
 
         if entries.is_empty() {
             self.draw_text_centered(50, "No history", Theme::TEXT_MUTED, 1);
         } else {
-            // Show entries (max visible based on screen height)
             let max_visible = 6;
             let start_idx = if selected >= max_visible {
                 selected - max_visible + 1
@@ -283,10 +278,8 @@ impl Renderer {
 
                 let color = if is_selected { Theme::TEXT_PRIMARY } else { Theme::TEXT_MUTED };
 
-                // Date
                 self.draw_text(8, y, &entry.completed_at, color, 1);
 
-                // Days since last (if available)
                 if let Some(days) = entry.days_since_last {
                     let days_text = format!("+{}", days);
                     let x = self.display.width() - self.text_width(&days_text, 1) - 8;
@@ -295,7 +288,6 @@ impl Renderer {
             }
         }
 
-        // Hint
         self.draw_text_centered(h - 10, "long press: back", Theme::TEXT_MUTED, 1);
 
         self.display.flush();
@@ -307,16 +299,13 @@ impl Renderer {
 
         let h = self.display.height();
 
-        // Header
         self.draw_text_centered(4, "Settings", Theme::TEXT_PRIMARY, 1);
-
-        // Separator
         self.display.hline(10, 16, self.display.width() - 20, Theme::CARD_BORDER);
 
         let start_y = 30;
         let item_height = 18;
 
-        // Item 0: Manage Tasks (no toggle, opens QR code)
+        // Manage Tasks
         let manage_y = start_y;
         let manage_selected = selected == 0;
         if manage_selected {
@@ -325,11 +314,10 @@ impl Renderer {
         }
         let manage_color = if manage_selected { Theme::TEXT_PRIMARY } else { Theme::TEXT_MUTED };
         self.draw_text(20, manage_y, "Manage Tasks", manage_color, 1);
-        // Arrow indicator to show it opens something
         let arrow_x = self.display.width() - self.text_width(">", 1) - 8;
         self.draw_text(arrow_x, manage_y, ">", Theme::TEXT_MUTED, 1);
 
-        // Item 1: Screen Timeout (toggle)
+        // Screen Timeout
         let timeout_y = start_y + item_height;
         let timeout_selected = selected == 1;
         if timeout_selected {
@@ -338,13 +326,12 @@ impl Renderer {
         }
         let timeout_color = if timeout_selected { Theme::TEXT_PRIMARY } else { Theme::TEXT_MUTED };
         self.draw_text(20, timeout_y, "Screen Timeout", timeout_color, 1);
-        // Toggle indicator
         let toggle_text = if screen_timeout_enabled { "[ON]" } else { "[OFF]" };
         let toggle_color = if screen_timeout_enabled { Theme::SUCCESS } else { Theme::TEXT_MUTED };
         let toggle_x = self.display.width() - self.text_width(toggle_text, 1) - 8;
         self.draw_text(toggle_x, timeout_y, toggle_text, toggle_color, 1);
 
-        // Item 2: Back
+        // Back
         let back_y = start_y + (2 * item_height);
         let back_selected = selected == 2;
         if back_selected {
@@ -354,13 +341,12 @@ impl Renderer {
         let back_color = if back_selected { Theme::TEXT_PRIMARY } else { Theme::TEXT_MUTED };
         self.draw_text(20, back_y, "Back", back_color, 1);
 
-        // Hint
         self.draw_text_centered(h - 10, "press to select", Theme::TEXT_MUTED, 1);
 
         self.display.flush();
     }
 
-    /// Render empty state (no tasks)
+    /// Render empty state
     pub fn render_empty(&mut self) {
         self.clear();
 
@@ -370,7 +356,7 @@ impl Renderer {
         self.display.flush();
     }
 
-    /// Render QR code screen for web access
+    /// Render QR code screen
     pub fn render_qr_code(&mut self, url: &str) {
         use qrcode::QrCode;
 
@@ -379,25 +365,18 @@ impl Renderer {
         let h = self.display.height();
         let w = self.display.width();
 
-        // Header
         self.draw_text_centered(2, "Scan to manage", Theme::TEXT_PRIMARY, 1);
 
-        // Generate QR code
         if let Ok(code) = QrCode::new(url.as_bytes()) {
             let qr_size = code.width();
-
-            // Calculate pixel size to fit on screen (leave room for text)
-            // Available height: ~100px (128 - header - footer)
-            // Available width: 160px
             let available = 96u32;
             let pixel_size = (available / qr_size as u32).max(1);
             let qr_pixels = qr_size as u32 * pixel_size;
 
-            // Center the QR code
             let start_x = (w - qr_pixels) / 2;
             let start_y: u32 = 14;
 
-            // Draw QR code with white background
+            // White background for QR
             self.display.fill_rect(
                 start_x.saturating_sub(4),
                 start_y.saturating_sub(4),
@@ -406,7 +385,7 @@ impl Renderer {
                 Theme::TEXT_PRIMARY,
             );
 
-            // Draw QR modules
+            // QR modules
             for (y, row) in code.to_colors().chunks(qr_size).enumerate() {
                 for (x, &color) in row.iter().enumerate() {
                     if color == qrcode::Color::Dark {
@@ -422,19 +401,9 @@ impl Renderer {
             }
         }
 
-        // Hint at bottom
         self.draw_text_centered(h - 10, "long press: back", Theme::TEXT_MUTED, 1);
 
         self.display.flush();
-    }
-}
-
-/// Truncate text to max characters with ellipsis
-fn truncate_text(text: &str, max_len: usize) -> String {
-    if text.len() <= max_len {
-        text.to_string()
-    } else {
-        format!("{}...", &text[..max_len - 3])
     }
 }
 
@@ -463,6 +432,7 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
 }
 
 /// Get bitmap for a character (5x7 font)
+/// Numbers designed with rounded, friendly appearance
 fn get_char_bitmap(ch: char) -> [u8; 7] {
     match ch {
         ' ' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000],
@@ -479,20 +449,21 @@ fn get_char_bitmap(ch: char) -> [u8; 7] {
         '+' => [0b00000, 0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0b00000],
         ',' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00100, 0b00100, 0b01000],
         '-' => [0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000],
-        '.' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00100, 0b00000],
+        '.' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00110, 0b00110],
         '/' => [0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b00000, 0b00000],
+        // Rounded, friendly numbers
         '0' => [0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110],
-        '1' => [0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
-        '2' => [0b01110, 0b10001, 0b00001, 0b00110, 0b01000, 0b10000, 0b11111],
+        '1' => [0b00110, 0b01110, 0b00110, 0b00110, 0b00110, 0b00110, 0b01111],
+        '2' => [0b01110, 0b10001, 0b00001, 0b00110, 0b01100, 0b10000, 0b11111],
         '3' => [0b01110, 0b10001, 0b00001, 0b00110, 0b00001, 0b10001, 0b01110],
-        '4' => [0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010],
+        '4' => [0b00011, 0b00101, 0b01001, 0b10001, 0b11111, 0b00001, 0b00001],
         '5' => [0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110],
         '6' => [0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110],
-        '7' => [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000],
+        '7' => [0b11111, 0b10001, 0b00010, 0b00100, 0b00100, 0b00100, 0b00100],
         '8' => [0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110],
         '9' => [0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100],
-        ':' => [0b00000, 0b00100, 0b00000, 0b00000, 0b00100, 0b00000, 0b00000],
-        ';' => [0b00000, 0b00100, 0b00000, 0b00000, 0b00100, 0b00100, 0b01000],
+        ':' => [0b00000, 0b00110, 0b00110, 0b00000, 0b00110, 0b00110, 0b00000],
+        ';' => [0b00000, 0b00110, 0b00110, 0b00000, 0b00110, 0b00100, 0b01000],
         '<' => [0b00010, 0b00100, 0b01000, 0b10000, 0b01000, 0b00100, 0b00010],
         '=' => [0b00000, 0b00000, 0b11111, 0b00000, 0b11111, 0b00000, 0b00000],
         '>' => [0b01000, 0b00100, 0b00010, 0b00001, 0b00010, 0b00100, 0b01000],
@@ -529,6 +500,6 @@ fn get_char_bitmap(ch: char) -> [u8; 7] {
         ']' => [0b01110, 0b00010, 0b00010, 0b00010, 0b00010, 0b00010, 0b01110],
         '^' => [0b00100, 0b01010, 0b10001, 0b00000, 0b00000, 0b00000, 0b00000],
         '_' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b11111],
-        _ => [0b11111, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11111], // Unknown char box
+        _ => [0b11111, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11111],
     }
 }

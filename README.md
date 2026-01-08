@@ -549,8 +549,6 @@ Environment variables (set in systemd service or shell):
 | `KIOSK_DATA_DIR` | `./data` | Database location |
 | `KIOSK_WEB_URL` | auto-detect | URL shown in QR code |
 | `KIOSK_HOSTNAME` | system hostname | Hostname for QR URL |
-| `SMB_BACKUP_ENABLED` | `false` | Enable SMB backup |
-| `SMB_SHARE_PATH` | - | SMB share path |
 
 ## License
 

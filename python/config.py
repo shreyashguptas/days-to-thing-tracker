@@ -42,7 +42,3 @@ def get_web_url():
 
 WEB_URL = get_web_url()
 
-# SMB Backup (optional)
-SMB_BACKUP_ENABLED = os.environ.get("SMB_BACKUP_ENABLED", "false").lower() == "true"
-SMB_SHARE_PATH = os.environ.get("SMB_SHARE_PATH", "")
-SMB_BACKUP_TIME = os.environ.get("SMB_BACKUP_TIME", "02:00")  # Daily at 2 AM
