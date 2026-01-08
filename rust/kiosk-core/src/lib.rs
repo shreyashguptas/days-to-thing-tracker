@@ -196,6 +196,12 @@ impl KioskController {
         Ok(())
     }
 
+    /// Render back card for navigation
+    fn render_back_card(&mut self, total_tasks: usize) -> PyResult<()> {
+        self.renderer.render_back_card(total_tasks);
+        Ok(())
+    }
+
     /// Render QR code screen for web access
     fn render_qr_code(&mut self, url: &str) -> PyResult<()> {
         self.renderer.render_qr_code(url);

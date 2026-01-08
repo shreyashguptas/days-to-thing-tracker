@@ -126,7 +126,13 @@ class ViewNavigator:
 
         elif ctx.state == ViewState.TASK_LIST:
             if ctx.tasks:
-                ctx.task_index = (ctx.task_index + 1) % len(ctx.tasks)
+                # -1 = back option, 0 to len-1 = tasks
+                if ctx.task_index == -1:
+                    ctx.task_index = 0  # Back → first task
+                elif ctx.task_index == len(ctx.tasks) - 1:
+                    ctx.task_index = -1  # Last task → back
+                else:
+                    ctx.task_index += 1
 
         elif ctx.state == ViewState.TASK_ACTIONS:
             ctx.action_index = (ctx.action_index + 1) % len(ctx.actions)
@@ -151,7 +157,13 @@ class ViewNavigator:
 
         elif ctx.state == ViewState.TASK_LIST:
             if ctx.tasks:
-                ctx.task_index = (ctx.task_index - 1) % len(ctx.tasks)
+                # -1 = back option, 0 to len-1 = tasks
+                if ctx.task_index == -1:
+                    ctx.task_index = len(ctx.tasks) - 1  # Back → last task
+                elif ctx.task_index == 0:
+                    ctx.task_index = -1  # First task → back
+                else:
+                    ctx.task_index -= 1
 
         elif ctx.state == ViewState.TASK_ACTIONS:
             ctx.action_index = (ctx.action_index - 1) % len(ctx.actions)
@@ -196,7 +208,13 @@ class ViewNavigator:
                 return "filter_tasks"
 
         elif ctx.state == ViewState.TASK_LIST:
-            if ctx.tasks:
+            if ctx.task_index == -1:
+                # Back selected - go to dashboard
+                ctx.filtered_urgency = None
+                ctx.task_index = 0
+                ctx.state = ViewState.DASHBOARD
+                return "go_dashboard"
+            elif ctx.tasks:
                 ctx.action_index = 0
                 ctx.state = ViewState.TASK_ACTIONS
 
@@ -302,7 +320,14 @@ class ViewNavigator:
             })
 
         elif ctx.state == ViewState.TASK_LIST:
-            if ctx.current_task:
+            if ctx.task_index == -1:
+                # Back option selected
+                base.update({
+                    "back_selected": True,
+                    "total": len(ctx.tasks),
+                    "filtered": ctx.filtered_urgency,
+                })
+            elif ctx.current_task:
                 base.update({
                     "task": ctx.current_task.to_display_dict(),
                     "index": ctx.task_index,

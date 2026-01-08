@@ -629,6 +629,28 @@ impl Renderer {
         self.draw_text(label_x, label_y, label, Theme::TEXT_MUTED, 1);
     }
 
+    /// Render back card (for navigating back to dashboard)
+    pub fn render_back_card(&mut self, total_tasks: usize) {
+        self.clear();
+
+        let h = self.display.height();
+
+        // Arrow icon pointing left
+        self.draw_text_centered(30, "<", Theme::ACCENT, 3);
+
+        // "Back" text
+        self.draw_text_centered(60, "Back", Theme::TEXT_PRIMARY, 2);
+
+        // Subtitle
+        self.draw_text_centered(85, "to Dashboard", Theme::TEXT_MUTED, 1);
+
+        // Navigation hint at bottom
+        let nav_text = format!("<< 0/{} >>", total_tasks);
+        self.draw_text_centered(h - 12, &nav_text, Theme::TEXT_MUTED, 1);
+
+        self.display.flush();
+    }
+
     /// Render empty filtered list message
     pub fn render_empty_filtered(&mut self, filter_name: &str) {
         self.clear();

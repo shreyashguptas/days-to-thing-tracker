@@ -201,27 +201,31 @@ class KioskApp:
                 )
 
             elif state == "TASK_LIST":
-                task = render_data.get("task")
-                filtered = render_data.get("filtered")
-                if task:
-                    task_data = TaskData(
-                        id=task["id"],
-                        name=task["name"],
-                        days_until_due=task["days_until_due"],
-                        urgency=task["urgency"],
-                        next_due_date=task["next_due_date"],
-                    )
-                    self.controller.render_task_card(
-                        task_data,
-                        render_data["index"],
-                        render_data["total"],
-                    )
-                elif filtered:
-                    # Empty filtered list
-                    self.controller.render_empty_filtered(filtered)
+                if render_data.get("back_selected"):
+                    # Show back card
+                    self.controller.render_back_card(render_data.get("total", 0))
                 else:
-                    # Empty overall list
-                    self.controller.render_empty()
+                    task = render_data.get("task")
+                    filtered = render_data.get("filtered")
+                    if task:
+                        task_data = TaskData(
+                            id=task["id"],
+                            name=task["name"],
+                            days_until_due=task["days_until_due"],
+                            urgency=task["urgency"],
+                            next_due_date=task["next_due_date"],
+                        )
+                        self.controller.render_task_card(
+                            task_data,
+                            render_data["index"],
+                            render_data["total"],
+                        )
+                    elif filtered:
+                        # Empty filtered list
+                        self.controller.render_empty_filtered(filtered)
+                    else:
+                        # Empty overall list
+                        self.controller.render_empty()
 
             elif state == "TASK_ACTIONS":
                 self.controller.render_action_menu(
