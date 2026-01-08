@@ -11,19 +11,13 @@ interface KioskTaskCardProps {
 export function KioskTaskCard({ task, index, total }: KioskTaskCardProps) {
   const { name, daysUntilDue, urgency, nextDueDate } = task;
 
-  // Format the due date for display
+  // Format the due date for display (always include year)
   const formatDueDate = () => {
     const date = new Date(nextDueDate);
     const month = date.toLocaleDateString('en-US', { month: 'short' });
     const day = date.getDate();
     const year = date.getFullYear();
-    const currentYear = new Date().getFullYear();
-
-    // Only show year if different from current year
-    if (year !== currentYear) {
-      return `${month} ${day}, ${year}`;
-    }
-    return `${month} ${day}`;
+    return `${month} ${day}, ${year}`;
   };
 
   // Urgency-based styling

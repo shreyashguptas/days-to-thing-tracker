@@ -24,7 +24,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
 try:
-    from gpiozero import Button
+    from gpiozero import Button, DigitalOutputDevice
 except ImportError:
     print("Error: gpiozero not installed. Run: sudo apt install python3-gpiozero")
     sys.exit(1)
@@ -51,7 +51,7 @@ button_press_time = 0  # Track when button was pressed
 # Idle timeout state
 last_activity_time = 0  # Will be initialized in main()
 screen_is_on = True
-backlight_path = None  # Path to sysfs backlight control (if available)
+backlight_device = None  # DigitalOutputDevice for GPIO backlight control
 
 # Settings server configuration
 SETTINGS_PORT = 8765
@@ -74,14 +74,16 @@ def send_key(key: str) -> None:
 
 
 def set_backlight(on: bool) -> bool:
-    """Control backlight via sysfs. Returns True if successful."""
-    if backlight_path is None:
+    """Control backlight via GPIO. Returns True if successful."""
+    if backlight_device is None:
         return False
     try:
-        with open(backlight_path, 'w') as f:
-            f.write('1' if on else '0')
+        if on:
+            backlight_device.on()
+        else:
+            backlight_device.off()
         return True
-    except (IOError, OSError) as e:
+    except Exception as e:
         print(f"Backlight control error: {e}")
         return False
 
@@ -225,29 +227,21 @@ def start_settings_server():
     server.serve_forever()
 
 
-def find_backlight_control() -> str | None:
-    """Find sysfs path for backlight control. Returns path or None."""
-    # Check for standard backlight interface
-    backlight_dir = Path('/sys/class/backlight')
-    if backlight_dir.exists():
-        for bl in backlight_dir.iterdir():
-            brightness_path = bl / 'brightness'
-            if brightness_path.exists():
-                print(f"  Found backlight: {bl.name}")
-                return str(brightness_path)
-
-    # Check for GPIO sysfs (if GPIO 18 is exported)
-    gpio_path = Path(f'/sys/class/gpio/gpio{PIN_BACKLIGHT}/value')
-    if gpio_path.exists():
-        print(f"  Found GPIO {PIN_BACKLIGHT} sysfs")
-        return str(gpio_path)
-
-    return None
+def init_backlight_gpio() -> DigitalOutputDevice | None:
+    """Initialize GPIO for backlight control. Returns device or None."""
+    try:
+        # Create output device for backlight pin, initially ON
+        device = DigitalOutputDevice(PIN_BACKLIGHT, initial_value=True)
+        print(f"  Backlight GPIO {PIN_BACKLIGHT} initialized (ON)")
+        return device
+    except Exception as e:
+        print(f"  Failed to initialize backlight GPIO: {e}")
+        return None
 
 
 def main() -> None:
     """Main function to set up encoder and button handlers."""
-    global last_activity_time, backlight_path
+    global last_activity_time, backlight_device
 
     print("Rotary Encoder Handler Starting...")
     print(f"  CLK: GPIO {PIN_CLK}")
@@ -262,11 +256,11 @@ def main() -> None:
     print(f"  Long press (>{LONG_PRESS_TIME}s) -> Escape (back)")
     print("")
 
-    # Initialize backlight control via sysfs
-    backlight_path = find_backlight_control()
-    if backlight_path:
-        print(f"Backlight control: {backlight_path}")
-        print(f"Backlight will turn off after {IDLE_TIMEOUT}s of inactivity")
+    # Initialize backlight control via GPIO
+    backlight_device = init_backlight_gpio()
+    if backlight_device:
+        print(f"Backlight control: GPIO {PIN_BACKLIGHT} (direct)")
+        print(f"Screen timeout: {IDLE_TIMEOUT}s of inactivity")
     else:
         print("Backlight control: not available (screen timeout disabled)")
     print("")
