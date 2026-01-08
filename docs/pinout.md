@@ -86,6 +86,18 @@ dtoverlay=adafruit18,dc_pin=25,reset_pin=24,speed=32000000,rotate=90
 
 **Important:** Reboot after changing config.txt!
 
+### Disable Console on TFT
+
+By default, Linux displays the console (login screen) on the TFT. To prevent this and keep the display blank until the kiosk starts:
+
+Edit `/boot/firmware/cmdline.txt` and add `fbcon=map:10` to the END of the line:
+
+```
+console=serial0,115200 console=tty1 root=PARTUUID=xxx rootfstype=ext4 ... rootwait fbcon=map:10
+```
+
+This maps the framebuffer console to fb10 (which doesn't exist), so fb0 stays clear for the kiosk.
+
 ### Verifying the Display
 
 After reboot, verify the framebuffer:

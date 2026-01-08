@@ -1,6 +1,8 @@
 [Unit]
 Description=Days Tracker Kiosk Display
-After=network.target
+# Start as early as possible - only need filesystem, not network
+After=local-fs.target
+Wants=local-fs.target
 
 [Service]
 Type=simple
@@ -9,12 +11,16 @@ Group=shreyash
 WorkingDirectory=/home/shreyash/days-to-thing-tracker
 Environment=PYTHONUNBUFFERED=1
 Environment=KIOSK_DATA_DIR=/home/shreyash/days-to-thing-tracker/data
+
+# Clear the framebuffer before starting (removes login screen)
+ExecStartPre=/bin/sh -c 'dd if=/dev/zero of=/dev/fb0 bs=40960 count=1 2>/dev/null || true'
+
 ExecStart=/home/shreyash/days-to-thing-tracker/venv/bin/python /home/shreyash/days-to-thing-tracker/python/main.py
 Restart=always
-RestartSec=5
+RestartSec=1
 
-# GPIO access
-SupplementaryGroups=gpio
+# GPIO and framebuffer access
+SupplementaryGroups=gpio video
 
 [Install]
 WantedBy=multi-user.target

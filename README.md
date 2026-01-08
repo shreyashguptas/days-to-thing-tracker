@@ -93,6 +93,21 @@ dtoverlay=adafruit18,dc_pin=25,reset_pin=24,speed=32000000,rotate=90
 
 Save and exit (Ctrl+X, Y, Enter).
 
+**Disable Linux console on TFT** (prevents login screen from appearing):
+
+```bash
+# Edit kernel command line
+sudo nano /boot/firmware/cmdline.txt
+```
+
+Add `fbcon=map:10` to the END of the single line (don't create a new line):
+
+```
+... rootwait fbcon=map:10
+```
+
+This maps the console to a non-existent framebuffer, so the TFT stays blank until the kiosk starts.
+
 **Reboot to apply:**
 ```bash
 sudo reboot
@@ -338,6 +353,31 @@ Then just run `~/update-kiosk.sh` to update.
 ---
 
 ## Troubleshooting
+
+### Login screen appears on TFT at boot
+
+The Linux console is being displayed on the TFT. Fix by disabling fbcon:
+
+```bash
+# Edit kernel command line
+sudo nano /boot/firmware/cmdline.txt
+
+# Add to END of line (don't create new line):
+fbcon=map:10
+
+# Reboot
+sudo reboot
+```
+
+### Kiosk takes too long to start
+
+Update the service file to start earlier:
+
+```bash
+sudo cp ~/days-to-thing-tracker/systemd/kiosk-tracker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart kiosk-tracker
+```
 
 ### Display shows white/blank
 
