@@ -116,22 +116,60 @@ impl Renderer {
         self.draw_text(x, y, text, color, scale);
     }
 
+    /// Draw a pill-shaped badge (rounded rectangle with text)
+    fn draw_pill(&mut self, y: u32, text: &str, text_color: Color, bg_color: Color, scale: u32) {
+        let text_w = self.text_width(text, scale);
+        let padding_x: u32 = 5;
+        let padding_y: u32 = 2;
+        let pill_w = text_w + padding_x * 2;
+        let pill_h = 7 * scale + padding_y * 2;
+        let x = (self.display.width().saturating_sub(pill_w)) / 2;
+
+        // Simple rounded pill: main rectangle with corner pixels cut
+        // Draw the full rectangle first
+        self.display.fill_rect(x, y, pill_w, pill_h, bg_color);
+
+        // Cut corners for rounded effect (remove 2x2 corner pixels)
+        // Top-left
+        self.display.set_pixel(x, y, Theme::BACKGROUND);
+        self.display.set_pixel(x + 1, y, Theme::BACKGROUND);
+        self.display.set_pixel(x, y + 1, Theme::BACKGROUND);
+        // Top-right
+        self.display.set_pixel(x + pill_w - 1, y, Theme::BACKGROUND);
+        self.display.set_pixel(x + pill_w - 2, y, Theme::BACKGROUND);
+        self.display.set_pixel(x + pill_w - 1, y + 1, Theme::BACKGROUND);
+        // Bottom-left
+        self.display.set_pixel(x, y + pill_h - 1, Theme::BACKGROUND);
+        self.display.set_pixel(x + 1, y + pill_h - 1, Theme::BACKGROUND);
+        self.display.set_pixel(x, y + pill_h - 2, Theme::BACKGROUND);
+        // Bottom-right
+        self.display.set_pixel(x + pill_w - 1, y + pill_h - 1, Theme::BACKGROUND);
+        self.display.set_pixel(x + pill_w - 2, y + pill_h - 1, Theme::BACKGROUND);
+        self.display.set_pixel(x + pill_w - 1, y + pill_h - 2, Theme::BACKGROUND);
+
+        // Draw text centered in pill
+        let text_x = x + padding_x;
+        let text_y = y + padding_y;
+        self.draw_text(text_x, text_y, text, text_color, scale);
+    }
+
     /// Render a task card (main view)
     pub fn render_task_card(&mut self, task: &TaskData, index: usize, total: usize) {
         self.clear();
 
         let h = self.display.height();
-        let screen_width = self.display.width();
-        let max_chars_per_line = (screen_width / (FONT_WIDTH + 1)) as usize;
+        let w = self.display.width();
+        // Use more of the screen width (was 22, now 26 chars)
+        let max_chars_per_line = ((w - 8) / (FONT_WIDTH + 1)) as usize;
 
-        // Urgency label at top
+        // Urgency label at top with pill background
         let urgency_color = Theme::urgency_color(&task.urgency);
         let urgency_label = Theme::urgency_label(&task.urgency);
-        self.draw_text_centered(2, urgency_label, urgency_color, 1);
+        self.draw_pill(3, urgency_label, Theme::TEXT_PRIMARY, urgency_color, 1);
 
-        // Task name - wrap to multiple lines if needed
-        let name_lines = wrap_text(&task.name, max_chars_per_line.min(22));
-        let name_start_y = 12;
+        // Task name - wrap to multiple lines if needed (tighter spacing)
+        let name_lines = wrap_text(&task.name, max_chars_per_line.min(25));
+        let name_start_y = 16;
         for (i, line) in name_lines.iter().take(2).enumerate() {
             self.draw_text_centered(name_start_y + (i as u32 * 9), line, Theme::TEXT_PRIMARY, 1);
         }
@@ -139,8 +177,8 @@ impl Renderer {
         // Large day count - use friendly rounded numbers
         let days_text = format!("{}", task.days_until_due.abs());
 
-        // Big number in center - position depends on name lines
-        let number_y = if name_lines.len() > 1 { 32 } else { 28 };
+        // Big number in center - tighter positioning
+        let number_y = if name_lines.len() > 1 { 36 } else { 32 };
 
         // Use scale 2 for big friendly numbers (they're already 12x18 base)
         // For 3+ digit numbers, use scale 1 to fit
@@ -157,17 +195,15 @@ impl Renderer {
         };
         // Big numbers are 18 pixels tall at scale 1, 36 at scale 2
         let number_height = BIG_NUM_HEIGHT * scale;
-        let label_y = number_y + number_height + 4;
+        let label_y = number_y + number_height + 2;
         self.draw_text_centered(label_y, days_label, Theme::TEXT_MUTED, 1);
 
-        // Due date
-        self.draw_text_centered(label_y + 12, &task.next_due_date, Theme::TEXT_MUTED, 1);
+        // Due date (tighter spacing - 10px instead of 12px)
+        self.draw_text_centered(label_y + 10, &task.next_due_date, Theme::TEXT_MUTED, 1);
 
-        // Navigation hint at bottom
-        let nav_text = format!("{}/{}", index + 1, total);
-        self.draw_text_centered(h - 18, &nav_text, Theme::TEXT_MUTED, 1);
-
-        self.draw_text_centered(h - 8, "scroll", Theme::TEXT_MUTED, 1);
+        // Navigation hint at bottom - combined single line with arrows
+        let nav_text = format!("<< {}/{} >>", index + 1, total);
+        self.draw_text_centered(h - 9, &nav_text, Theme::TEXT_MUTED, 1);
 
         self.display.flush();
     }
