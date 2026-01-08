@@ -1,0 +1,39 @@
+"""
+Configuration for Days Tracker Kiosk
+"""
+import os
+from pathlib import Path
+
+# Base paths
+BASE_DIR = Path(__file__).parent.parent
+DATA_DIR = Path(os.environ.get("KIOSK_DATA_DIR", BASE_DIR / "data"))
+
+# Ensure data directory exists
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Database
+DATABASE_PATH = DATA_DIR / "tasks.db"
+
+# Display settings
+DISPLAY_WIDTH = 160
+DISPLAY_HEIGHT = 128
+
+# GPIO pins (BCM numbering)
+PIN_CLK = 17        # Encoder CLK (A)
+PIN_DT = 27         # Encoder DT (B)
+PIN_SW = 22         # Encoder switch
+PIN_BACKLIGHT = 18  # Display backlight
+
+# Timing
+IDLE_TIMEOUT = 300          # 5 minutes before screen off
+POLL_INTERVAL = 0.001       # 1ms polling for encoder
+COMPLETING_DURATION = 0.5   # Animation duration in seconds
+
+# HTTP API (for remote task management)
+API_HOST = "0.0.0.0"
+API_PORT = 8080
+
+# SMB Backup (optional)
+SMB_BACKUP_ENABLED = os.environ.get("SMB_BACKUP_ENABLED", "false").lower() == "true"
+SMB_SHARE_PATH = os.environ.get("SMB_SHARE_PATH", "")
+SMB_BACKUP_TIME = os.environ.get("SMB_BACKUP_TIME", "02:00")  # Daily at 2 AM

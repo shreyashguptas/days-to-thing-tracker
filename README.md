@@ -1,101 +1,157 @@
-# Days to Thing Tracker
+# Days Tracker Kiosk
 
-A simple, modern recurring task tracker that resets countdowns based on when tasks are actually completed, not on a fixed schedule.
+A standalone kiosk application for tracking recurring tasks on a Raspberry Pi Zero 2 W with a small TFT display and rotary encoder.
 
 ## Features
 
-- Track recurring tasks (water filter, maintenance, etc.)
-- Smart countdown that resets based on actual completion date
-- Tasks categorized by urgency: Overdue, Due Today, This Week, Coming Up
-- Dark/Light theme toggle
-- Mobile-friendly responsive design
-- Docker deployment with Tailscale integration
+- **Standalone operation**: No server required, runs entirely on the Pi
+- **Direct framebuffer rendering**: No browser overhead, instant response
+- **Rotary encoder navigation**: Scroll through tasks, select actions
+- **Screen timeout**: Automatic backlight control to save power
+- **REST API**: Add/edit tasks from any device on your network
+- **SQLite storage**: Local database with optional SMB backup
+
+## Hardware Requirements
+
+- Raspberry Pi Zero 2 W
+- 160x128 TFT display (ST7735 or similar)
+- KY-040 rotary encoder
+- Wiring (see [docs/pinout.md](docs/pinout.md))
 
 ## Quick Start
 
-### Development
+1. **Flash Raspberry Pi OS Lite** to your SD card
 
-```bash
-# Install dependencies
-npm install
+2. **Clone this repository**:
+   ```bash
+   git clone https://github.com/shreyashguptas/days-to-thing-tracker.git
+   cd days-to-thing-tracker
+   ```
 
-# Generate Prisma client
-npx prisma generate
+3. **Run setup**:
+   ```bash
+   chmod +x setup.sh
+   ./setup.sh
+   ```
 
-# Run migrations
-npx prisma migrate deploy
+4. **Start the kiosk**:
+   ```bash
+   sudo systemctl start kiosk-tracker
+   ```
 
-# Start development server
-npm run dev
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Python Application                    │
+│  main.py - Event loop, business logic                   │
+│  database.py - SQLite operations                        │
+│  views.py - Navigation state machine                    │
+│  api.py - REST API for remote management                │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│                 Rust Core (kiosk_core)                  │
+│  encoder.rs - GPIO input handling (<10µs latency)       │
+│  display.rs - Direct framebuffer rendering              │
+│  renderer.rs - UI widgets and layout                    │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+              ┌────────────┴────────────┐
+              │                         │
+         GPIO 17,27,22             /dev/fb0
+       (Rotary Encoder)          (TFT Display)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+## Controls
 
-### Production (Docker with Tailscale)
-
-```bash
-# Run the setup wizard
-python setup.py
-
-# Or manually:
-# 1. Copy .env.example to .env and add your Tailscale auth key
-# 2. Build and start containers
-docker compose up -d
-```
-
-Access via Tailscale Magic DNS: `http://days-tracker:3000`
-
-## Setup Wizard
-
-The `setup.py` script guides you through configuration:
-
-```bash
-python setup.py          # Interactive setup
-python setup.py --check  # Verify configuration
-python setup.py --reset  # Reset configuration
-```
-
-## Tech Stack
-
-- **Frontend**: Next.js 16, React 19, TypeScript
-- **Styling**: Tailwind CSS 4
-- **Database**: SQLite with Prisma ORM
-- **Container**: Docker with Tailscale sidecar
+| Action | Result |
+|--------|--------|
+| Rotate clockwise | Scroll down / Next item |
+| Rotate counter-clockwise | Scroll up / Previous item |
+| Short press | Select / Confirm |
+| Long press (>0.5s) | Back / Settings |
 
 ## Project Structure
 
 ```
-├── src/
-│   ├── app/              # Next.js app router pages & API
-│   ├── components/       # React components
-│   │   ├── ui/          # Reusable UI primitives
-│   │   └── tasks/       # Task-specific components
-│   ├── hooks/           # Custom React hooks
-│   ├── lib/             # Utilities (prisma, date-utils)
-│   └── types/           # TypeScript definitions
-├── prisma/              # Database schema & migrations
-├── docker/              # Dockerfile
-├── docker-compose.yml   # Container orchestration
-└── setup.py             # Setup wizard
+days-to-thing-tracker/
+├── python/                 # Python application
+│   ├── main.py            # Entry point
+│   ├── database.py        # SQLite operations
+│   ├── models.py          # Data models
+│   ├── views.py           # Navigation state
+│   ├── api.py             # REST API
+│   └── config.py          # Configuration
+├── rust/                   # Rust core library
+│   └── kiosk-core/
+│       └── src/
+│           ├── lib.rs     # PyO3 module
+│           ├── encoder.rs # GPIO handling
+│           ├── display.rs # Framebuffer
+│           ├── renderer.rs # UI rendering
+│           └── theme.rs   # Colors
+├── systemd/               # Service files
+├── docs/                  # Documentation
+├── setup.sh               # Installation script
+└── Cargo.toml             # Rust workspace
 ```
 
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | SQLite database path | `file:./data/tasks.db` |
-| `TS_AUTHKEY` | Tailscale auth key | - |
-
 ## API Endpoints
+
+The optional REST API runs on port 8080:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/tasks` | List all tasks |
 | POST | `/api/tasks` | Create task |
-| GET | `/api/tasks/[id]` | Get task |
-| PUT | `/api/tasks/[id]` | Update task |
-| DELETE | `/api/tasks/[id]` | Archive task |
-| POST | `/api/tasks/[id]/complete` | Mark complete |
+| GET | `/api/tasks/:id` | Get task |
+| PUT | `/api/tasks/:id` | Update task |
+| DELETE | `/api/tasks/:id` | Delete task |
+| POST | `/api/tasks/:id/complete` | Mark complete |
+| GET | `/api/tasks/:id/history` | Get history |
+
+### Create Task Example
+
+```bash
+curl -X POST http://pi.local:8080/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Change Air Filter",
+    "recurrenceType": "daily",
+    "recurrenceValue": 30,
+    "nextDueDate": "2026-02-01"
+  }'
+```
+
+## Configuration
+
+Environment variables (set in systemd service or export):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KIOSK_DATA_DIR` | `./data` | Database location |
+| `SMB_BACKUP_ENABLED` | `false` | Enable SMB backup |
+| `SMB_SHARE_PATH` | - | SMB share path |
+
+## Development
+
+### Build Rust library locally
+
+```bash
+cd rust/kiosk-core
+maturin develop
+```
+
+### Run without hardware (simulation mode)
+
+```bash
+python python/main.py
+```
+
+The application will run in simulation mode if GPIO/framebuffer aren't available.
 
 ## License
 

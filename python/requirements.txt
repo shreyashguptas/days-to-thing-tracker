@@ -1,0 +1,17 @@
+# Days Tracker Kiosk - Python Dependencies
+
+# Rust bindings are built via maturin, not installed via pip
+# kiosk-core is built locally
+
+# Database
+# (SQLite is built into Python)
+
+# Date handling
+python-dateutil>=2.8.0
+
+# HTTP server for remote task management (optional)
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Development only
+maturin>=1.4.0

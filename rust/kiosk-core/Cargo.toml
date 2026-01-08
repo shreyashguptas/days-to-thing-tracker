@@ -1,0 +1,37 @@
+[package]
+name = "kiosk-core"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance core for Days Tracker kiosk display"
+
+[lib]
+name = "kiosk_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Python bindings
+pyo3 = { version = "0.20", features = ["extension-module"] }
+
+# GPIO for Raspberry Pi
+rppal = "0.17"
+
+# Framebuffer access
+framebuffer = "0.3"
+
+# Graphics primitives
+embedded-graphics = "0.8"
+
+# Font rendering
+embedded-graphics-core = "0.4"
+
+# Async runtime (lightweight)
+parking_lot = "0.12"
+
+# Error handling
+thiserror = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

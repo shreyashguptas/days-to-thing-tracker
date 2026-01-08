@@ -1,58 +1,52 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+ENV/
+.eggs/
+*.egg-info/
+*.egg
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# Rust
+/target/
+rust/**/target/
+**/*.rs.bk
+Cargo.lock
 
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-/src/generated/prisma
-
-# Database
+# Data files
 *.db
 *.db-journal
-/prisma/*.db
-/prisma/*.db-journal
 /data/
 
-# Docker
-.docker/tailscale/state/
+# Environment
+.env
+.env.*
 
-**/__pycache__/
-/__pycache__/
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build artifacts
+*.so
+*.dylib
+*.dll
+dist/
+build/
+
+# Logs
+*.log
+
+# Local development
 CLAUDE.md

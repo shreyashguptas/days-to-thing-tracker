@@ -1,0 +1,17 @@
+[Unit]
+Description=Days Tracker REST API
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/days-to-thing-tracker
+Environment=PYTHONUNBUFFERED=1
+Environment=KIOSK_DATA_DIR=/home/pi/days-to-thing-tracker/data
+ExecStart=/home/pi/days-to-thing-tracker/venv/bin/python /home/pi/days-to-thing-tracker/python/api.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
