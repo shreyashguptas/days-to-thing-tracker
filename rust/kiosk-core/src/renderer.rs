@@ -497,42 +497,52 @@ impl Renderer {
         let h = self.display.height();
 
         // === URGENCY BAR (visual chart at top) ===
-        let bar_y = 4;
-        let bar_h = 8;
-        let bar_margin = 8;
+        let bar_y = 3;
+        let bar_h = 12;  // Taller for better visibility
+        let bar_margin = 6;
         let bar_w = w - (bar_margin * 2);
 
-        // Draw bar background
-        self.display.fill_rect(bar_margin, bar_y, bar_w, bar_h, Theme::CARD_BORDER);
+        // Draw bar background with border for visibility
+        self.display.fill_rect(bar_margin, bar_y, bar_w, bar_h, Theme::CARD_BG);
+        // Add subtle border
+        self.display.hline(bar_margin, bar_y, bar_w, Theme::CARD_BORDER);
+        self.display.hline(bar_margin, bar_y + bar_h - 1, bar_w, Theme::CARD_BORDER);
+        self.display.vline(bar_margin, bar_y, bar_h, Theme::CARD_BORDER);
+        self.display.vline(bar_margin + bar_w - 1, bar_y, bar_h, Theme::CARD_BORDER);
 
-        // Calculate proportions for stacked bar
+        // Calculate proportions for stacked bar (draw inside border)
+        let inner_x = bar_margin + 1;
+        let inner_y = bar_y + 1;
+        let inner_w = bar_w - 2;
+        let inner_h = bar_h - 2;
+
         if total > 0 {
-            let overdue_w = (overdue as f32 / total as f32 * bar_w as f32) as u32;
-            let today_w = (today as f32 / total as f32 * bar_w as f32) as u32;
+            let overdue_w = (overdue as f32 / total as f32 * inner_w as f32) as u32;
+            let today_w = (today as f32 / total as f32 * inner_w as f32) as u32;
             let week_only = week.saturating_sub(overdue).saturating_sub(today);
-            let week_w = (week_only as f32 / total as f32 * bar_w as f32) as u32;
+            let week_w = (week_only as f32 / total as f32 * inner_w as f32) as u32;
 
-            let mut x = bar_margin;
+            let mut x = inner_x;
 
             // Overdue segment (red)
             if overdue_w > 0 {
-                self.display.fill_rect(x, bar_y, overdue_w, bar_h, Theme::URGENCY_OVERDUE);
+                self.display.fill_rect(x, inner_y, overdue_w, inner_h, Theme::URGENCY_OVERDUE);
                 x += overdue_w;
             }
             // Today segment (orange)
             if today_w > 0 {
-                self.display.fill_rect(x, bar_y, today_w, bar_h, Theme::URGENCY_TODAY);
+                self.display.fill_rect(x, inner_y, today_w, inner_h, Theme::URGENCY_TODAY);
                 x += today_w;
             }
             // This week segment (green)
             if week_w > 0 {
-                self.display.fill_rect(x, bar_y, week_w, bar_h, Theme::URGENCY_WEEK);
+                self.display.fill_rect(x, inner_y, week_w, inner_h, Theme::URGENCY_WEEK);
                 x += week_w;
             }
             // Remaining (upcoming - blue)
-            let remaining = bar_w.saturating_sub(x - bar_margin);
+            let remaining = (inner_x + inner_w).saturating_sub(x);
             if remaining > 0 {
-                self.display.fill_rect(x, bar_y, remaining, bar_h, Theme::URGENCY_UPCOMING);
+                self.display.fill_rect(x, inner_y, remaining, inner_h, Theme::URGENCY_UPCOMING);
             }
         }
 
@@ -576,9 +586,6 @@ impl Renderer {
             self.draw_text(all_x + (btn_w - self.text_width("All Tasks", 1)) / 2, nav_y + 5, "All Tasks", Theme::TEXT_MUTED, 1);
             self.draw_text(settings_x + (btn_w - self.text_width("Settings", 1)) / 2, nav_y + 5, "Settings", Theme::TEXT_MUTED, 1);
         }
-
-        // Navigation hint
-        self.draw_text_centered(h - 6, "scroll to navigate", Theme::TEXT_MUTED, 1);
 
         self.display.flush();
     }
