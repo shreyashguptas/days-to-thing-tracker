@@ -14,7 +14,8 @@ use crate::{HistoryEntry, TaskData};
 /// Simple bitmap font (5x7 pixels per character)
 /// Characters are stored as 7 bytes each, MSB first
 const FONT_WIDTH: u32 = 5;
-const FONT_HEIGHT: u32 = 7;
+#[allow(dead_code)]
+const FONT_HEIGHT: u32 = 7; // Kept for documentation/future use
 
 /// Renderer handles all UI drawing operations
 pub struct Renderer {
