@@ -4,94 +4,442 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Days Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg-warm: #FEF9F3;
+            --bg-card: #FFFFFF;
+            --text-primary: #4A4A4A;
+            --text-secondary: #8B8B8B;
+            --text-light: #B5B5B5;
+
+            /* Friendly urgency colors */
+            --urgency-overdue: #FF7B7B;
+            --urgency-overdue-bg: #FFF0F0;
+            --urgency-soon: #FFB86B;
+            --urgency-soon-bg: #FFF8F0;
+            --urgency-good: #7DD3A8;
+            --urgency-good-bg: #F0FFF7;
+            --urgency-chill: #A8B4FF;
+            --urgency-chill-bg: #F5F6FF;
+
+            /* Accent colors */
+            --accent-coral: #FF8A80;
+            --accent-teal: #64D8CB;
+            --accent-purple: #B39DDB;
+
+            /* Shadows */
+            --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.06);
+            --shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
+            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-warm);
+            background-image:
+                radial-gradient(ellipse at top left, rgba(255, 138, 128, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(100, 216, 203, 0.08) 0%, transparent 50%);
+            color: var(--text-primary);
             min-height: 100vh;
-            padding: 16px;
+            padding: 24px 16px 100px;
         }
-        h1 { font-size: 1.5rem; margin-bottom: 16px; text-align: center; }
-        .tasks { display: flex; flex-direction: column; gap: 12px; }
+
+        .header {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .tasks {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
         .task {
-            background: #16213e;
-            border-radius: 12px;
-            padding: 16px;
-            border-left: 4px solid #0f4c75;
-        }
-        .task.overdue { border-color: #e94560; }
-        .task.due-soon { border-color: #f39c12; }
-        .task.on-track { border-color: #00b894; }
-        .task-header { display: flex; justify-content: space-between; align-items: start; }
-        .task-name { font-weight: 600; font-size: 1.1rem; }
-        .task-days { font-size: 1.5rem; font-weight: 700; text-align: right; }
-        .task-days small { display: block; font-size: 0.7rem; font-weight: 400; color: #888; }
-        .task-due { font-size: 0.85rem; color: #888; margin-top: 4px; }
-        .task-actions { margin-top: 12px; display: flex; gap: 8px; }
-        .btn {
-            padding: 8px 16px;
+            background: var(--bg-card);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: var(--shadow-soft);
             border: none;
-            border-radius: 8px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .task::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            border-radius: 20px 20px 0 0;
+        }
+
+        .task:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .task.overdue { background: var(--urgency-overdue-bg); }
+        .task.overdue::before { background: var(--urgency-overdue); }
+
+        .task.due-soon { background: var(--urgency-soon-bg); }
+        .task.due-soon::before { background: var(--urgency-soon); }
+
+        .task.on-track { background: var(--urgency-good-bg); }
+        .task.on-track::before { background: var(--urgency-good); }
+
+        .task.chill { background: var(--urgency-chill-bg); }
+        .task.chill::before { background: var(--urgency-chill); }
+
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .task-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .task-name {
+            font-weight: 700;
+            font-size: 1.15rem;
+            color: var(--text-primary);
+            line-height: 1.3;
+            word-wrap: break-word;
+        }
+
+        .task-due {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .task-due::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--text-light);
+        }
+
+        .task-countdown {
+            text-align: center;
+            min-width: 80px;
+        }
+
+        .task-days {
+            font-size: 2.5rem;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -0.03em;
+        }
+
+        .task.overdue .task-days { color: var(--urgency-overdue); }
+        .task.due-soon .task-days { color: var(--urgency-soon); }
+        .task.on-track .task-days { color: var(--urgency-good); }
+        .task.chill .task-days { color: var(--urgency-chill); }
+
+        .task-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 4px;
+        }
+
+        .task-actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 12px;
             font-size: 0.9rem;
+            font-weight: 600;
+            font-family: inherit;
             cursor: pointer;
             flex: 1;
+            transition: all 0.2s ease;
         }
-        .btn-done { background: #00b894; color: white; }
-        .btn-delete { background: #e94560; color: white; }
-        .btn-edit { background: #0f4c75; color: white; }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn-done {
+            background: var(--accent-teal);
+            color: white;
+        }
+        .btn-done:hover {
+            background: #52C9BA;
+        }
+
+        .btn-edit {
+            background: var(--bg-warm);
+            color: var(--text-primary);
+            border: 2px solid rgba(0,0,0,0.08);
+        }
+        .btn-edit:hover {
+            background: #F5EDE5;
+        }
+
+        .btn-delete {
+            background: rgba(255, 123, 123, 0.15);
+            color: var(--urgency-overdue);
+        }
+        .btn-delete:hover {
+            background: rgba(255, 123, 123, 0.25);
+        }
+
         .add-btn {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 56px;
-            height: 56px;
+            bottom: 24px;
+            right: 24px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
-            background: #0f4c75;
+            background: linear-gradient(135deg, var(--accent-coral) 0%, var(--accent-purple) 100%);
             color: white;
             font-size: 2rem;
+            font-weight: 300;
             border: none;
             cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            box-shadow: 0 6px 24px rgba(255, 138, 128, 0.4);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
+
+        .add-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 8px 32px rgba(255, 138, 128, 0.5);
+        }
+
+        .add-btn:active {
+            transform: scale(1);
+        }
+
         .modal {
             display: none;
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.8);
+            background: rgba(74, 74, 74, 0.4);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             padding: 20px;
             z-index: 100;
         }
-        .modal.active { display: flex; align-items: center; justify-content: center; }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
         .modal-content {
-            background: #16213e;
-            padding: 24px;
-            border-radius: 16px;
+            background: var(--bg-card);
+            padding: 28px;
+            border-radius: 24px;
             width: 100%;
             max-width: 400px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            animation: slideUp 0.3s ease;
         }
-        .modal h2 { margin-bottom: 16px; }
-        .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: #888; }
-        .form-group input, .form-group select {
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal h2 {
+            margin-bottom: 24px;
+            font-weight: 800;
+            font-size: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .form-group input,
+        .form-group select {
             width: 100%;
-            padding: 12px;
-            border: 1px solid #333;
-            border-radius: 8px;
-            background: #1a1a2e;
-            color: white;
+            padding: 14px 16px;
+            border: 2px solid rgba(0, 0, 0, 0.08);
+            border-radius: 14px;
+            background: var(--bg-warm);
+            color: var(--text-primary);
             font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.2s ease;
         }
-        .modal-actions { display: flex; gap: 12px; margin-top: 20px; }
-        .btn-cancel { background: #333; color: #888; }
-        .btn-save { background: #00b894; color: white; }
-        .empty { text-align: center; padding: 40px; color: #666; }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent-teal);
+            background: white;
+        }
+
+        .form-group input::placeholder {
+            color: var(--text-light);
+        }
+
+        .recurrence-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .recurrence-row input {
+            width: 90px;
+            text-align: center;
+        }
+
+        .recurrence-row select {
+            flex: 1;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 28px;
+        }
+
+        .btn-cancel {
+            background: var(--bg-warm);
+            color: var(--text-secondary);
+            border: 2px solid rgba(0,0,0,0.06);
+        }
+        .btn-cancel:hover {
+            background: #F0E8E0;
+        }
+
+        .btn-save {
+            background: linear-gradient(135deg, var(--accent-teal) 0%, #52C9BA 100%);
+            color: white;
+        }
+        .btn-save:hover {
+            background: linear-gradient(135deg, #52C9BA 0%, #48B8AA 100%);
+        }
+
+        .empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+            background: var(--bg-card);
+            border-radius: 24px;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        .empty-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .empty-text {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+        }
+
+        /* Responsive tweaks */
+        @media (max-width: 400px) {
+            body {
+                padding: 16px 12px 90px;
+            }
+
+            .task {
+                padding: 16px;
+            }
+
+            .task-days {
+                font-size: 2rem;
+            }
+
+            .task-countdown {
+                min-width: 65px;
+            }
+
+            .btn {
+                padding: 10px 12px;
+                font-size: 0.85rem;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>Days Tracker</h1>
+    <div class="header">
+        <h1>Days Tracker</h1>
+        <p class="subtitle">Keep your home on track</p>
+    </div>
+
     <div class="tasks" id="tasks"></div>
+
     <button class="add-btn" onclick="showAddModal()">+</button>
 
     <div class="modal" id="modal">
@@ -99,14 +447,14 @@
             <h2 id="modal-title">Add Task</h2>
             <input type="hidden" id="task-id">
             <div class="form-group">
-                <label>Task Name</label>
-                <input type="text" id="task-name" placeholder="e.g., Water plants">
+                <label>What needs doing?</label>
+                <input type="text" id="task-name" placeholder="Water the plants, change filters...">
             </div>
             <div class="form-group">
-                <label>Repeat Every</label>
-                <div style="display: flex; gap: 8px;">
-                    <input type="number" id="recurrence-value" value="7" min="1" style="width: 80px;">
-                    <select id="recurrence-type" style="flex: 1;">
+                <label>Repeat every</label>
+                <div class="recurrence-row">
+                    <input type="number" id="recurrence-value" value="7" min="1">
+                    <select id="recurrence-type">
                         <option value="days">Days</option>
                         <option value="weeks">Weeks</option>
                         <option value="months">Months</option>
@@ -114,7 +462,7 @@
                 </div>
             </div>
             <div class="form-group">
-                <label>Next Due Date</label>
+                <label>Next due date</label>
                 <input type="date" id="next-due">
             </div>
             <div class="modal-actions">
@@ -137,21 +485,50 @@
         function renderTasks() {
             const el = document.getElementById('tasks');
             if (tasks.length === 0) {
-                el.innerHTML = '<div class="empty">No tasks yet. Tap + to add one.</div>';
+                el.innerHTML = `
+                    <div class="empty">
+                        <div class="empty-icon">+</div>
+                        <div class="empty-title">No tasks yet</div>
+                        <div class="empty-text">Tap the button below to add your first task</div>
+                    </div>
+                `;
                 return;
             }
+
             el.innerHTML = tasks.map(t => {
-                const urgency = t.daysUntilDue < 0 ? 'overdue' : t.daysUntilDue <= 3 ? 'due-soon' : 'on-track';
+                let urgency, label;
                 const days = Math.abs(t.daysUntilDue);
-                const label = t.daysUntilDue < 0 ? 'overdue' : t.daysUntilDue === 1 ? 'day left' : 'days left';
+
+                if (t.daysUntilDue < 0) {
+                    urgency = 'overdue';
+                    label = days === 1 ? 'day overdue' : 'days overdue';
+                } else if (t.daysUntilDue === 0) {
+                    urgency = 'due-soon';
+                    label = 'due today';
+                } else if (t.daysUntilDue <= 3) {
+                    urgency = 'due-soon';
+                    label = t.daysUntilDue === 1 ? 'day left' : 'days left';
+                } else if (t.daysUntilDue <= 7) {
+                    urgency = 'on-track';
+                    label = 'days left';
+                } else {
+                    urgency = 'chill';
+                    label = 'days left';
+                }
+
+                const displayDays = t.daysUntilDue === 0 ? '!' : days;
+
                 return `
                     <div class="task ${urgency}">
                         <div class="task-header">
-                            <div>
+                            <div class="task-info">
                                 <div class="task-name">${escapeHtml(t.name)}</div>
-                                <div class="task-due">Due: ${t.nextDueDate}</div>
+                                <div class="task-due">${formatDate(t.nextDueDate)}</div>
                             </div>
-                            <div class="task-days">${days}<small>${label}</small></div>
+                            <div class="task-countdown">
+                                <div class="task-days">${displayDays}</div>
+                                <div class="task-label">${label}</div>
+                            </div>
                         </div>
                         <div class="task-actions">
                             <button class="btn btn-done" onclick="completeTask(${t.id})">Done</button>
@@ -167,6 +544,12 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr + 'T00:00:00');
+            const options = { weekday: 'short', month: 'short', day: 'numeric' };
+            return date.toLocaleDateString('en-US', options);
         }
 
         async function completeTask(id) {
@@ -238,6 +621,13 @@
             hideModal();
             loadTasks();
         }
+
+        // Close modal when clicking outside
+        document.getElementById('modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                hideModal();
+            }
+        });
 
         loadTasks();
     </script>
