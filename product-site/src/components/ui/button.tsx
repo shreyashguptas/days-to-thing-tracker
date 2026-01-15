@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 import { ButtonHTMLAttributes, forwardRef } from "react";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "outline" | "ghost";
-  size?: "sm" | "md" | "lg" | "xl";
+  variant?: "primary" | "outline" | "ghost";
+  size?: "sm" | "md" | "lg";
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -14,34 +14,38 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "relative inline-flex items-center justify-center font-semibold transition-all duration-300 rounded-full",
-          "focus:outline-none focus:ring-2 focus:ring-offset-2",
+          // Base styles - architectural, not pill-shaped
+          "relative inline-flex items-center justify-center font-medium transition-all duration-200",
+          "rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
           "disabled:opacity-50 disabled:cursor-not-allowed",
-          // Variants
+
+          // Primary - solid coral with depth
           variant === "primary" && [
-            "bg-gradient-to-r from-[var(--pop-coral)] to-[var(--pop-orange)]",
-            "text-white shadow-lg hover:shadow-xl hover:scale-105",
-            "focus:ring-[var(--pop-coral)]",
+            "bg-[var(--accent)] text-white",
+            "shadow-subtle hover:bg-[var(--accent-hover)] hover:shadow-elevated",
+            "active:scale-[0.98]",
+            "focus-visible:ring-[var(--accent)]",
           ],
-          variant === "secondary" && [
-            "bg-gradient-to-r from-[var(--pop-cyan)] to-[var(--pop-blue)]",
-            "text-white shadow-lg hover:shadow-xl hover:scale-105",
-            "focus:ring-[var(--pop-blue)]",
-          ],
+
+          // Outline - clean border with proper weight
           variant === "outline" && [
-            "border-2 border-[var(--pop-coral)] text-[var(--pop-coral)]",
-            "hover:bg-[var(--pop-coral)] hover:text-white",
-            "focus:ring-[var(--pop-coral)]",
+            "border border-[var(--border)] text-[var(--foreground)] bg-transparent",
+            "hover:bg-[var(--neutral-100)] dark:hover:bg-[var(--neutral-800)]",
+            "focus-visible:ring-[var(--neutral-400)]",
           ],
+
+          // Ghost - minimal
           variant === "ghost" && [
-            "text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/10",
-            "focus:ring-[var(--pop-blue)]",
+            "text-[var(--muted)] hover:text-[var(--foreground)]",
+            "hover:bg-[var(--neutral-100)] dark:hover:bg-[var(--neutral-800)]",
+            "focus-visible:ring-[var(--neutral-400)]",
           ],
-          // Sizes
+
+          // Sizes - refined proportions
           size === "sm" && "px-4 py-2 text-sm",
-          size === "md" && "px-6 py-3 text-base",
-          size === "lg" && "px-8 py-4 text-lg",
-          size === "xl" && "px-10 py-5 text-xl",
+          size === "md" && "px-5 py-2.5 text-sm",
+          size === "lg" && "px-7 py-3.5 text-base tracking-wide",
+
           className
         )}
         {...props}
