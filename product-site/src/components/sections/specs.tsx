@@ -65,25 +65,16 @@ function SpecCard({ spec, index }: { spec: typeof specs[0]; index: number }) {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-50px" });
 
-  const gradients = [
-    "from-[var(--pop-coral)] to-[var(--pop-orange)]",
-    "from-[var(--pop-orange)] to-[var(--pop-yellow)]",
-    "from-[var(--pop-mint)] to-[var(--pop-cyan)]",
-    "from-[var(--pop-cyan)] to-[var(--pop-blue)]",
-    "from-[var(--pop-blue)] to-[var(--pop-purple)]",
-    "from-[var(--pop-purple)] to-[var(--pop-pink)]",
-  ];
-
   return (
     <motion.div
       ref={ref}
-      initial={{ opacity: 0, y: 30 }}
-      animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
+      initial={{ opacity: 0, y: 25 }}
+      animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 25 }}
       transition={{ duration: 0.5, delay: index * 0.1 }}
-      className="bg-white dark:bg-[var(--dark-card)] rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-[var(--dark-border)]"
+      className="bg-white dark:bg-[var(--neutral-800)] rounded-2xl p-6 border border-[var(--border)]"
     >
       {/* Category header */}
-      <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r ${gradients[index]} text-white text-sm font-medium mb-4`}>
+      <div className="text-sm font-medium text-[var(--accent)] mb-4 tracking-wide">
         {spec.category}
       </div>
 
@@ -93,8 +84,8 @@ function SpecCard({ spec, index }: { spec: typeof specs[0]; index: number }) {
           <motion.div
             key={item.label}
             className="flex justify-between items-center"
-            initial={{ opacity: 0, x: -20 }}
-            animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
+            initial={{ opacity: 0, x: -15 }}
+            animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: -15 }}
             transition={{ duration: 0.3, delay: index * 0.1 + i * 0.05 + 0.2 }}
           >
             <span className="text-[var(--muted)] text-sm">{item.label}</span>
@@ -111,22 +102,22 @@ export function Specs() {
   const isInView = useInView(ref, { once: true, margin: "-100px" });
 
   return (
-    <section id="specs" ref={ref} className="py-32">
-      <div className="max-w-7xl mx-auto px-6">
+    <section id="specs" ref={ref} className="py-32 bg-[var(--neutral-50)] dark:bg-[var(--neutral-900)]">
+      <div className="max-w-6xl mx-auto px-6">
         {/* Section header */}
         <motion.div
           className="text-center mb-16"
-          initial={{ opacity: 0, y: 40 }}
-          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 40 }}
+          initial={{ opacity: 0, y: 30 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
           transition={{ duration: 0.6 }}
         >
-          <Badge variant="cyan" className="mb-4">Specifications</Badge>
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6">
-            <span>Built for</span>
+          <Badge className="mb-4">Specifications</Badge>
+          <h2 className="text-4xl md:text-5xl lg:text-6xl mb-6">
+            <span className="font-serif italic text-[var(--accent)]">Built for</span>
             <br />
-            <span className="gradient-text-cool">performance.</span>
+            <span className="font-semibold">performance.</span>
           </h2>
-          <p className="text-xl text-[var(--muted)] max-w-2xl mx-auto">
+          <p className="text-lg text-[var(--muted)] max-w-xl mx-auto">
             Powerful hardware meets elegant software. Every detail optimized for speed, reliability, and longevity.
           </p>
         </motion.div>
@@ -145,7 +136,7 @@ export function Specs() {
           animate={isInView ? { opacity: 1 } : { opacity: 0 }}
           transition={{ delay: 0.8 }}
         >
-          <p className="text-[var(--muted)]">
+          <p className="text-sm text-[var(--muted)]">
             All specifications subject to change. Final product may vary slightly.
           </p>
         </motion.div>

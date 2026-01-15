@@ -28,30 +28,20 @@ export function Navigation() {
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
         scrolled
-          ? "bg-white/80 dark:bg-[var(--dark-bg)]/80 backdrop-blur-xl shadow-lg"
+          ? "bg-[var(--background)]/90 backdrop-blur-xl border-b border-[var(--border)]"
           : "bg-transparent"
       )}
     >
-      <div className="max-w-7xl mx-auto px-6 py-4">
+      <div className="max-w-6xl mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
-          {/* Logo */}
-          <a href="#" className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--pop-coral)] to-[var(--pop-orange)] flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-                />
-              </svg>
+          {/* Logo - text-based, premium */}
+          <a href="#" className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center">
+              <span className="text-white font-serif text-lg font-bold">D</span>
             </div>
-            <span className="text-xl font-bold gradient-text">DaysTracker</span>
+            <span className="text-lg font-semibold text-[var(--foreground)]">
+              DaysTracker
+            </span>
           </a>
 
           {/* Desktop Navigation */}
@@ -60,7 +50,7 @@ export function Navigation() {
               <a
                 key={link.href}
                 href={link.href}
-                className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors font-medium"
+                className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
               >
                 {link.label}
               </a>
@@ -74,8 +64,9 @@ export function Navigation() {
 
           {/* Mobile Menu Button */}
           <button
-            className="md:hidden p-2"
+            className="md:hidden p-2 text-[var(--muted)] hover:text-[var(--foreground)]"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle menu"
           >
             <svg
               className="w-6 h-6"
@@ -87,14 +78,14 @@ export function Navigation() {
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
+                  strokeWidth={1.5}
                   d="M6 18L18 6M6 6l12 12"
                 />
               ) : (
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  strokeWidth={2}
+                  strokeWidth={1.5}
                   d="M4 6h16M4 12h16M4 18h16"
                 />
               )}
@@ -104,13 +95,13 @@ export function Navigation() {
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden mt-4 pb-4 border-t border-gray-100 dark:border-[var(--dark-border)]">
+          <div className="md:hidden mt-4 pb-4 border-t border-[var(--border)]">
             <div className="flex flex-col gap-4 pt-4">
               {navLinks.map((link) => (
                 <a
                   key={link.href}
                   href={link.href}
-                  className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors font-medium"
+                  className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {link.label}
