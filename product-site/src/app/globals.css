@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+:root {
+  /* Core brand colors - Popping and vibrant */
+  --pop-coral: #FF6B6B;
+  --pop-orange: #FF9F43;
+  --pop-yellow: #FECA57;
+  --pop-mint: #1DD1A1;
+  --pop-cyan: #00D2D3;
+  --pop-blue: #54A0FF;
+  --pop-purple: #5F27CD;
+  --pop-pink: #FF6B9D;
+
+  /* Subtle variants */
+  --subtle-cream: #FFF9F0;
+  --subtle-sage: #E8F5E9;
+  --subtle-sky: #E3F2FD;
+  --subtle-lavender: #F3E5F5;
+
+  /* Dark theme */
+  --dark-bg: #0A0A0F;
+  --dark-card: #131318;
+  --dark-border: #2A2A35;
+
+  /* Light theme */
+  --light-bg: #FAFAFA;
+  --light-card: #FFFFFF;
+  --light-border: #E5E5E5;
+
+  --background: var(--light-bg);
+  --foreground: #1A1A2E;
+  --muted: #6B7280;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+
+  /* Brand colors */
+  --color-pop-coral: var(--pop-coral);
+  --color-pop-orange: var(--pop-orange);
+  --color-pop-yellow: var(--pop-yellow);
+  --color-pop-mint: var(--pop-mint);
+  --color-pop-cyan: var(--pop-cyan);
+  --color-pop-blue: var(--pop-blue);
+  --color-pop-purple: var(--pop-purple);
+  --color-pop-pink: var(--pop-pink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: var(--dark-bg);
+    --foreground: #FFFFFF;
+    --muted: #9CA3AF;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--pop-coral);
+  border-radius: 4px;
+}
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, var(--pop-coral) 0%, var(--pop-orange) 50%, var(--pop-yellow) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-cool {
+  background: linear-gradient(135deg, var(--pop-cyan) 0%, var(--pop-blue) 50%, var(--pop-purple) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glow effects */
+.glow-coral {
+  box-shadow: 0 0 40px rgba(255, 107, 107, 0.3);
+}
+
+.glow-mint {
+  box-shadow: 0 0 40px rgba(29, 209, 161, 0.3);
+}
+
+.glow-blue {
+  box-shadow: 0 0 40px rgba(84, 160, 255, 0.3);
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Section fade in animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 107, 107, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(255, 107, 107, 0.8);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
