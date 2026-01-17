@@ -144,7 +144,7 @@ fresh_install() {
     fi
 
     echo ""
-    echo -e "${BLUE}[1/7] Updating system packages...${NC}"
+    echo -e "${BLUE}[1/8] Updating system packages...${NC}"
     sudo apt-get update
     sudo apt-get install -y \
         python3-pip \
@@ -157,7 +157,20 @@ fresh_install() {
         curl
 
     echo ""
-    echo -e "${BLUE}[2/7] Checking Rust installation...${NC}"
+    echo -e "${BLUE}[2/8] Setting up swap (required for Pi Zero 2 W)...${NC}"
+    if [ ! -f /swapfile ]; then
+        sudo fallocate -l 1G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+        echo -e "${GREEN}✓ 1GB swap file created${NC}"
+    else
+        echo "Swap file already exists, skipping"
+    fi
+
+    echo ""
+    echo -e "${BLUE}[3/8] Checking Rust installation...${NC}"
     if ! command -v cargo &> /dev/null; then
         echo "Installing Rust..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -169,7 +182,7 @@ fresh_install() {
     source "$HOME/.cargo/env" 2>/dev/null || true
 
     echo ""
-    echo -e "${BLUE}[3/7] Setting up Python virtual environment...${NC}"
+    echo -e "${BLUE}[4/8] Setting up Python virtual environment...${NC}"
     if [ ! -d "$VENV_DIR" ]; then
         python3 -m venv "$VENV_DIR"
     fi
@@ -179,20 +192,20 @@ fresh_install() {
     pip install maturin
 
     echo ""
-    echo -e "${BLUE}[4/7] Building Rust library...${NC}"
+    echo -e "${BLUE}[5/8] Building Rust library...${NC}"
     build_rust
 
     echo ""
-    echo -e "${BLUE}[5/7] Creating data directory...${NC}"
+    echo -e "${BLUE}[6/8] Creating data directory...${NC}"
     mkdir -p "$DATA_DIR"
 
     echo ""
-    echo -e "${BLUE}[6/7] Installing systemd services...${NC}"
+    echo -e "${BLUE}[7/8] Installing systemd services...${NC}"
     update_services
     enable_services
 
     echo ""
-    echo -e "${BLUE}[7/7] Starting services...${NC}"
+    echo -e "${BLUE}[8/8] Starting services...${NC}"
     restart_services
 
     echo ""

@@ -22,6 +22,21 @@ A standalone kiosk application for tracking recurring tasks on a Raspberry Pi Ze
 | Storage | microSD card (8GB+) | For OS and data |
 | Power | 5V 2A USB power supply | |
 
+## Quick Start
+
+After flashing Raspberry Pi OS and connecting via SSH:
+
+```bash
+# Clone the repository
+git clone https://github.com/shreyashguptas/days-to-thing-tracker.git
+cd days-to-thing-tracker
+
+# Run the setup script and select "3) Fresh Install"
+./deploy.sh
+```
+
+This handles everything: system packages, swap file, Rust, Python, and services. For detailed manual steps, see the [Complete Installation Guide](#complete-installation-guide) below.
+
 ## Wiring
 
 See [docs/pinout.md](docs/pinout.md) for complete pinout diagram.
@@ -150,6 +165,24 @@ sudo apt-get install -y \
 ### Step 6: Install Rust
 
 Rust is required to build the kiosk-core library.
+
+**Important:** The Pi Zero 2 W has limited RAM (512MB). Create a swap file first to prevent the installation from being killed:
+
+```bash
+# Create 1GB swap file (required for Pi Zero 2 W)
+sudo fallocate -l 1G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+# Make swap permanent (survives reboot)
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# Verify swap is active
+free -h
+```
+
+Now install Rust:
 
 ```bash
 # Install Rust
@@ -520,7 +553,7 @@ days-to-thing-tracker/
 ├── systemd/               # Service files
 ├── docs/                  # Documentation
 │   └── pinout.md         # Wiring diagram
-├── setup.sh               # Installation script
+├── deploy.sh              # Deployment and setup script
 └── Cargo.toml             # Rust workspace
 ```
 
