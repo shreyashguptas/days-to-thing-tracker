@@ -48,6 +48,9 @@ build/
 # Logs
 *.log
 
+# Docker
+.docker/
+
 # Local development
 CLAUDE.md
 *.claude/*.md
