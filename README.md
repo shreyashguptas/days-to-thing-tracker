@@ -18,7 +18,7 @@ A standalone embedded device for tracking recurring tasks. Runs on a Seeed XIAO 
 | Component | Model | Notes |
 |-----------|-------|-------|
 | Microcontroller | Seeed XIAO ESP32-C6 | RISC-V, WiFi 6, ~$5 |
-| Display | 1.8" 160x128 TFT (ST7735) | SPI interface |
+| Display | 1.8" ST7735S SPI TFT LCD Display Module | Full Color 128RGB*160 Dot-matrix, 128RGB*160 Dots resolution, 3.3V, SPI interface, Drive IC: ST7735S|
 | Input | KY-040 Rotary Encoder | With push button |
 | Power | USB-C (from XIAO board) | |
 
