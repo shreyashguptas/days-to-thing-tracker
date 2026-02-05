@@ -57,7 +57,7 @@ impl<'d, CLK: InputPin + OutputPin, DT: InputPin + OutputPin, SW: InputPin + Out
         sw.set_pull(Pull::Up)?;
 
         let mut backlight = PinDriver::output(bl_pin)?;
-        backlight.set_high()?;
+        backlight.set_high()?; // Active-high: HIGH = backlight ON
 
         let now = Instant::now();
 
@@ -126,7 +126,7 @@ impl<'d, CLK: InputPin + OutputPin, DT: InputPin + OutputPin, SW: InputPin + Out
         None
     }
 
-    /// Set backlight state
+    /// Set backlight state (active-high: HIGH = on, LOW = off)
     pub fn set_backlight(&mut self, on: bool) {
         if on {
             let _ = self.backlight.set_high();

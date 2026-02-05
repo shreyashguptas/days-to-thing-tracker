@@ -461,8 +461,9 @@ impl Renderer {
     pub fn render_empty(fb: &mut FrameBuffer) {
         Self::clear(fb);
 
-        Self::draw_text_centered(fb, 40, "No tasks", theme::TEXT_PRIMARY, 2);
-        Self::draw_text_centered(fb, 70, "Add tasks via web", theme::TEXT_MUTED, 1);
+        Self::draw_text_centered(fb, 30, "No tasks", theme::TEXT_PRIMARY, 2);
+        Self::draw_text_centered(fb, 60, "Add tasks via web", theme::TEXT_MUTED, 1);
+        Self::draw_text_centered(fb, fb.height() - 10, "press for QR code", theme::TEXT_MUTED, 1);
     }
 
     /// Render dashboard with metrics and navigation
@@ -642,8 +643,8 @@ impl Renderer {
         Self::draw_text_centered(fb, fb.height() - 10, "long press: back", theme::TEXT_MUTED, 1);
     }
 
-    /// Render QR code screen
-    pub fn render_qr_code(fb: &mut FrameBuffer, data: &str) {
+    /// Render QR code screen with URL
+    pub fn render_qr_code(fb: &mut FrameBuffer, data: &str, url: &str) {
         use qrcode::QrCode;
 
         Self::clear(fb);
@@ -655,7 +656,7 @@ impl Renderer {
 
         if let Ok(code) = QrCode::new(data.as_bytes()) {
             let qr_size = code.width();
-            let available = 96u32;
+            let available = 86u32;
             let pixel_size = (available / qr_size as u32).max(1);
             let qr_pixels = qr_size as u32 * pixel_size;
 
@@ -685,6 +686,10 @@ impl Renderer {
                     }
                 }
             }
+
+            // Show URL below QR code
+            let url_y = start_y + qr_pixels + 10;
+            Self::draw_text_centered(fb, url_y, url, theme::ACCENT, 1);
         }
 
         Self::draw_text_centered(fb, h - 10, "long press: back", theme::TEXT_MUTED, 1);

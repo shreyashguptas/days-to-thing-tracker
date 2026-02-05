@@ -30,6 +30,7 @@ pub type SharedTime = Arc<Mutex<Option<i64>>>;
 pub fn start_server(
     storage: SharedStorage,
     time_source: SharedTime,
+    ap_ip: [u8; 4],
 ) -> Result<EspHttpServer<'static>, Box<dyn std::error::Error>> {
     let server_config = HttpConfig {
         http_port: config::HTTP_PORT,
@@ -44,6 +45,60 @@ pub fn start_server(
             let html = include_str!("../static/index.html");
             req.into_ok_response()?
                 .write(html.as_bytes())?;
+            Ok(())
+        })?;
+    }
+
+    // Captive portal detection handlers
+    // Redirect connectivity checks to our web UI so phones auto-open it
+    {
+        let url = format!("http://{}.{}.{}.{}/", ap_ip[0], ap_ip[1], ap_ip[2], ap_ip[3]);
+
+        // Android connectivity check
+        let redirect = url.clone();
+        server.fn_handler("/generate_204", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            let mut resp = req.into_response(302, None, &[("Location", &redirect)])?;
+            resp.write(&[])?;
+            Ok(())
+        })?;
+
+        // Android alternate
+        let redirect = url.clone();
+        server.fn_handler("/gen_204", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            let mut resp = req.into_response(302, None, &[("Location", &redirect)])?;
+            resp.write(&[])?;
+            Ok(())
+        })?;
+
+        // iOS / macOS captive portal detection
+        let redirect = url.clone();
+        server.fn_handler("/hotspot-detect.html", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            let mut resp = req.into_response(302, None, &[("Location", &redirect)])?;
+            resp.write(&[])?;
+            Ok(())
+        })?;
+
+        // Windows connectivity check
+        let redirect = url.clone();
+        server.fn_handler("/connecttest.txt", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            let mut resp = req.into_response(302, None, &[("Location", &redirect)])?;
+            resp.write(&[])?;
+            Ok(())
+        })?;
+
+        // Windows NCSI
+        let redirect = url.clone();
+        server.fn_handler("/ncsi.txt", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            let mut resp = req.into_response(302, None, &[("Location", &redirect)])?;
+            resp.write(&[])?;
+            Ok(())
+        })?;
+
+        // Firefox captive portal detection
+        let redirect = url.clone();
+        server.fn_handler("/canonical.html", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            let mut resp = req.into_response(302, None, &[("Location", &redirect)])?;
+            resp.write(&[])?;
             Ok(())
         })?;
     }

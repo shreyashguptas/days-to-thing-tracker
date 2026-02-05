@@ -31,6 +31,7 @@ use mipidsi::Builder;
 
 mod config;
 mod display;
+mod dns;
 mod encoder;
 mod fonts;
 mod http_server;
@@ -85,21 +86,14 @@ fn main() {
 
     let mut hw_display = Builder::new(ST7735s, spi_iface)
         .reset_pin(rst)
-        .invert_colors(ColorInversion::Normal)
-        .orientation(Orientation::new())
+        .invert_colors(ColorInversion::Inverted)
+        .orientation(Orientation::new().rotate(Rotation::Deg90))
         .init(&mut FreeRtos)
         .unwrap();
 
     log::info!("Display initialized");
 
-    // Create framebuffer
-    let mut fb = FrameBuffer::new();
-
-    // Show splash screen
-    Renderer::render_connecting(&mut fb, "Starting...");
-    flush_to_display(&mut hw_display, &fb);
-
-    // === Initialize Encoder ===
+    // === Initialize Encoder + Backlight ===
     log::info!("Initializing encoder...");
     let backlight_on = Arc::new(AtomicBool::new(true));
     let mut enc = Encoder::new(
@@ -112,13 +106,23 @@ fn main() {
     .unwrap();
     log::info!("Encoder initialized");
 
+    // === Create framebuffer ===
+    let mut fb = FrameBuffer::new();
+
     // === Start WiFi SoftAP ===
     log::info!("Starting WiFi SoftAP...");
     Renderer::render_connecting(&mut fb, "Starting WiFi...");
     flush_to_display(&mut hw_display, &fb);
 
-    let _wifi = wifi::init_softap(peripherals.modem, sysloop, nvs).unwrap();
+    let wifi = wifi::init_softap(peripherals.modem, sysloop, nvs).unwrap();
     log::info!("WiFi SoftAP ready");
+
+    // === Configure captive portal (DHCP DNS + DNS server) ===
+    let ap_ip = wifi::configure_captive_portal(&wifi);
+    let ap_url = format!("http://{}.{}.{}.{}", ap_ip[0], ap_ip[1], ap_ip[2], ap_ip[3]);
+    dns::start(ap_ip);
+    log::info!("Captive portal ready: {}", ap_url);
+    let _wifi = wifi; // keep alive
 
     // === Mount Storage ===
     log::info!("Mounting storage...");
@@ -143,11 +147,12 @@ fn main() {
 
     // === Start HTTP Server (in current thread context, runs async) ===
     log::info!("Starting HTTP server...");
-    let _server = http_server::start_server(storage.clone(), time_source.clone()).unwrap();
+    let _server = http_server::start_server(storage.clone(), time_source.clone(), ap_ip).unwrap();
     log::info!("HTTP server ready on port {}", config::HTTP_PORT);
 
     // === Initialize View Navigator ===
     let mut nav = ViewNavigator::new();
+    nav.ctx.ap_url = ap_url;
 
     // Load initial data
     {
@@ -402,9 +407,9 @@ fn render_current_view(
         } => {
             Renderer::render_settings(fb, selected, screen_timeout_enabled);
         }
-        RenderCommand::QrCode => {
+        RenderCommand::QrCode { url } => {
             let qr_data = wifi::wifi_qr_string();
-            Renderer::render_qr_code(fb, &qr_data);
+            Renderer::render_qr_code(fb, &qr_data, &url);
         }
     }
 }

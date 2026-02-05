@@ -110,6 +110,9 @@ pub struct ViewContext {
     // Settings state
     pub setting_index: usize,
     pub screen_timeout_enabled: bool,
+
+    // Network info
+    pub ap_url: String,
 }
 
 /// Task counts for dashboard
@@ -137,6 +140,7 @@ impl ViewContext {
             history_index: 0,
             setting_index: 0,
             screen_timeout_enabled: true,
+            ap_url: String::new(),
         }
     }
 
@@ -194,7 +198,9 @@ pub enum RenderCommand {
         selected: usize,
         screen_timeout_enabled: bool,
     },
-    QrCode,
+    QrCode {
+        url: String,
+    },
 }
 
 /// Handles navigation between views based on encoder input
@@ -266,7 +272,7 @@ impl ViewNavigator {
                 let max_idx = SETTING_ITEMS.len() - 1;
                 ctx.setting_index = (ctx.setting_index + 1).min(max_idx);
             }
-            _ => {}
+            ViewState::Empty | ViewState::QrCode | ViewState::Completing => {}
         }
     }
 
@@ -310,7 +316,7 @@ impl ViewNavigator {
             ViewState::Settings => {
                 ctx.setting_index = ctx.setting_index.saturating_sub(1);
             }
-            _ => {}
+            ViewState::Empty | ViewState::QrCode | ViewState::Completing => {}
         }
     }
 
@@ -410,7 +416,11 @@ impl ViewNavigator {
                     }
                 }
             }
-            _ => {}
+            ViewState::Empty => {
+                ctx.state = ViewState::QrCode;
+                return Some("show_qr");
+            }
+            ViewState::QrCode | ViewState::Completing => {}
         }
 
         None
@@ -442,7 +452,10 @@ impl ViewNavigator {
             ViewState::Completing => {
                 // Can't cancel completion
             }
-            ViewState::Empty => {}
+            ViewState::Empty => {
+                ctx.state = ViewState::Dashboard;
+                return Some("go_dashboard");
+            }
         }
 
         None
@@ -526,7 +539,9 @@ impl ViewNavigator {
                 selected: ctx.setting_index,
                 screen_timeout_enabled: ctx.screen_timeout_enabled,
             },
-            ViewState::QrCode => RenderCommand::QrCode,
+            ViewState::QrCode => RenderCommand::QrCode {
+                url: ctx.ap_url.clone(),
+            },
             ViewState::Empty => RenderCommand::Empty,
         }
     }
