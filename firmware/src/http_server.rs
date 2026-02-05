@@ -40,10 +40,10 @@ pub fn start_server(
 
     // GET / -> serve index.html
     {
-        server.fn_handler("/", Method::Get, |req| {
+        server.fn_handler("/", Method::Get, |req| -> Result<(), esp_idf_svc::io::EspIOError> {
             let html = include_str!("../static/index.html");
             req.into_ok_response()?
-                .write_all(html.as_bytes())?;
+                .write(html.as_bytes())?;
             Ok(())
         })?;
     }
@@ -51,7 +51,7 @@ pub fn start_server(
     // GET /health
     {
         let time = time_source.clone();
-        server.fn_handler("/health", Method::Get, move |req| {
+        server.fn_handler("/health", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
             let timestamp = time.lock().unwrap().unwrap_or(0);
             let body = json!({
                 "status": "ok",
@@ -59,7 +59,7 @@ pub fn start_server(
             })
             .to_string();
             let mut resp = req.into_ok_response()?;
-            resp.write_all(body.as_bytes())?;
+            resp.write(body.as_bytes())?;
             Ok(())
         })?;
     }
@@ -68,7 +68,7 @@ pub fn start_server(
     {
         let store = storage.clone();
         let time = time_source.clone();
-        server.fn_handler("/api/tasks", Method::Get, move |req| {
+        server.fn_handler("/api/tasks", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
             let s = store.lock().unwrap();
             let today = get_today(&time);
             let tasks = s.get_all_tasks(true);
@@ -90,7 +90,7 @@ pub fn start_server(
                 .collect();
             let body = serde_json::to_string(&json_tasks).unwrap_or_else(|_| "[]".into());
             let mut resp = req.into_ok_response()?;
-            resp.write_all(body.as_bytes())?;
+            resp.write(body.as_bytes())?;
             Ok(())
         })?;
     }
@@ -99,7 +99,7 @@ pub fn start_server(
     {
         let store = storage.clone();
         let time = time_source.clone();
-        server.fn_handler("/api/tasks", Method::Post, move |mut req| {
+        server.fn_handler("/api/tasks", Method::Post, move |mut req| -> Result<(), esp_idf_svc::io::EspIOError> {
             let mut buf = [0u8; 1024];
             let len = req.read(&mut buf).unwrap_or(0);
             let body_str = core::str::from_utf8(&buf[..len]).unwrap_or("");
@@ -136,12 +136,12 @@ pub fn start_server(
                     .to_string();
 
                     let mut resp = req.into_response(201, None, &[("Content-Type", "application/json")])?;
-                    resp.write_all(resp_body.as_bytes())?;
+                    resp.write(resp_body.as_bytes())?;
                 }
                 Err(_) => {
                     let err = json!({"error": "Invalid JSON"}).to_string();
                     let mut resp = req.into_response(400, None, &[("Content-Type", "application/json")])?;
-                    resp.write_all(err.as_bytes())?;
+                    resp.write(err.as_bytes())?;
                 }
             }
             Ok(())
@@ -151,7 +151,7 @@ pub fn start_server(
     // POST /api/time - receive timestamp from phone JS for RTC sync
     {
         let time = time_source.clone();
-        server.fn_handler("/api/time", Method::Post, move |mut req| {
+        server.fn_handler("/api/time", Method::Post, move |mut req| -> Result<(), esp_idf_svc::io::EspIOError> {
             let mut buf = [0u8; 256];
             let len = req.read(&mut buf).unwrap_or(0);
             let body_str = core::str::from_utf8(&buf[..len]).unwrap_or("");
@@ -165,7 +165,7 @@ pub fn start_server(
 
             let body = json!({"status": "ok"}).to_string();
             let mut resp = req.into_ok_response()?;
-            resp.write_all(body.as_bytes())?;
+            resp.write(body.as_bytes())?;
             Ok(())
         })?;
     }
@@ -188,14 +188,14 @@ fn register_task_routes(
     {
         let store = storage.clone();
         let time = time_source.clone();
-        server.fn_handler("/api/tasks/*", Method::Get, move |req| {
+        server.fn_handler("/api/tasks/*", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
             let uri = req.uri();
             let parts: Vec<&str> = uri.trim_start_matches("/api/tasks/").split('/').collect();
 
             if parts.is_empty() {
                 let err = json!({"error": "Not found"}).to_string();
                 let mut resp = req.into_response(404, None, &[("Content-Type", "application/json")])?;
-                resp.write_all(err.as_bytes())?;
+                resp.write(err.as_bytes())?;
                 return Ok(());
             }
 
@@ -204,7 +204,7 @@ fn register_task_routes(
                 Err(_) => {
                     let err = json!({"error": "Invalid task ID"}).to_string();
                     let mut resp = req.into_response(400, None, &[("Content-Type", "application/json")])?;
-                    resp.write_all(err.as_bytes())?;
+                    resp.write(err.as_bytes())?;
                     return Ok(());
                 }
             };
@@ -218,7 +218,7 @@ fn register_task_routes(
                 if task.is_none() {
                     let err = json!({"error": "Task not found"}).to_string();
                     let mut resp = req.into_response(404, None, &[("Content-Type", "application/json")])?;
-                    resp.write_all(err.as_bytes())?;
+                    resp.write(err.as_bytes())?;
                     return Ok(());
                 }
 
@@ -236,7 +236,7 @@ fn register_task_routes(
 
                 let body = serde_json::to_string(&json_history).unwrap_or_else(|_| "[]".into());
                 let mut resp = req.into_ok_response()?;
-                resp.write_all(body.as_bytes())?;
+                resp.write(body.as_bytes())?;
             } else {
                 // GET /api/tasks/:id
                 match s.get_task(task_id) {
@@ -254,12 +254,12 @@ fn register_task_routes(
                         })
                         .to_string();
                         let mut resp = req.into_ok_response()?;
-                        resp.write_all(body.as_bytes())?;
+                        resp.write(body.as_bytes())?;
                     }
                     None => {
                         let err = json!({"error": "Task not found"}).to_string();
                         let mut resp = req.into_response(404, None, &[("Content-Type", "application/json")])?;
-                        resp.write_all(err.as_bytes())?;
+                        resp.write(err.as_bytes())?;
                     }
                 }
             }
@@ -271,7 +271,7 @@ fn register_task_routes(
     {
         let store = storage.clone();
         let time = time_source.clone();
-        server.fn_handler("/api/tasks/*", Method::Put, move |mut req| {
+        server.fn_handler("/api/tasks/*", Method::Put, move |mut req| -> Result<(), esp_idf_svc::io::EspIOError> {
             let uri = req.uri().to_string();
             let task_id_str = uri.trim_start_matches("/api/tasks/").split('/').next().unwrap_or("");
             let task_id: u32 = match task_id_str.parse() {
@@ -279,7 +279,7 @@ fn register_task_routes(
                 Err(_) => {
                     let err = json!({"error": "Invalid task ID"}).to_string();
                     let mut resp = req.into_response(400, None, &[("Content-Type", "application/json")])?;
-                    resp.write_all(err.as_bytes())?;
+                    resp.write(err.as_bytes())?;
                     return Ok(());
                 }
             };
@@ -316,18 +316,18 @@ fn register_task_routes(
                         })
                         .to_string();
                         let mut resp = req.into_ok_response()?;
-                        resp.write_all(body.as_bytes())?;
+                        resp.write(body.as_bytes())?;
                     }
                     None => {
                         let err = json!({"error": "Task not found"}).to_string();
                         let mut resp = req.into_response(404, None, &[("Content-Type", "application/json")])?;
-                        resp.write_all(err.as_bytes())?;
+                        resp.write(err.as_bytes())?;
                     }
                 }
             } else {
                 let err = json!({"error": "Invalid JSON"}).to_string();
                 let mut resp = req.into_response(400, None, &[("Content-Type", "application/json")])?;
-                resp.write_all(err.as_bytes())?;
+                resp.write(err.as_bytes())?;
             }
             Ok(())
         })?;
@@ -336,7 +336,7 @@ fn register_task_routes(
     // DELETE /api/tasks/*
     {
         let store = storage.clone();
-        server.fn_handler("/api/tasks/*", Method::Delete, move |req| {
+        server.fn_handler("/api/tasks/*", Method::Delete, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
             let uri = req.uri().to_string();
             let task_id_str = uri.trim_start_matches("/api/tasks/").split('/').next().unwrap_or("");
             let task_id: u32 = match task_id_str.parse() {
@@ -344,7 +344,7 @@ fn register_task_routes(
                 Err(_) => {
                     let err = json!({"error": "Invalid task ID"}).to_string();
                     let mut resp = req.into_response(400, None, &[("Content-Type", "application/json")])?;
-                    resp.write_all(err.as_bytes())?;
+                    resp.write(err.as_bytes())?;
                     return Ok(());
                 }
             };
@@ -352,11 +352,11 @@ fn register_task_routes(
             let mut s = store.lock().unwrap();
             if s.delete_task(task_id) {
                 let mut resp = req.into_response(204, None, &[])?;
-                resp.write_all(&[])?;
+                resp.write(&[])?;
             } else {
                 let err = json!({"error": "Task not found"}).to_string();
                 let mut resp = req.into_response(404, None, &[("Content-Type", "application/json")])?;
-                resp.write_all(err.as_bytes())?;
+                resp.write(err.as_bytes())?;
             }
             Ok(())
         })?;
@@ -366,7 +366,7 @@ fn register_task_routes(
     {
         let store = storage.clone();
         let time = time_source.clone();
-        server.fn_handler("/api/tasks/*/complete", Method::Post, move |req| {
+        server.fn_handler("/api/tasks/*/complete", Method::Post, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
             let uri = req.uri().to_string();
             let task_id_str = uri
                 .trim_start_matches("/api/tasks/")
@@ -379,7 +379,7 @@ fn register_task_routes(
                 Err(_) => {
                     let err = json!({"error": "Invalid task ID"}).to_string();
                     let mut resp = req.into_response(400, None, &[("Content-Type", "application/json")])?;
-                    resp.write_all(err.as_bytes())?;
+                    resp.write(err.as_bytes())?;
                     return Ok(());
                 }
             };
@@ -399,16 +399,16 @@ fn register_task_routes(
                     })
                     .to_string();
                     let mut resp = req.into_ok_response()?;
-                    resp.write_all(body.as_bytes())?;
+                    resp.write(body.as_bytes())?;
                 } else {
                     let err = json!({"error": "Task not found"}).to_string();
                     let mut resp = req.into_response(404, None, &[("Content-Type", "application/json")])?;
-                    resp.write_all(err.as_bytes())?;
+                    resp.write(err.as_bytes())?;
                 }
             } else {
                 let err = json!({"error": "Task not found"}).to_string();
                 let mut resp = req.into_response(404, None, &[("Content-Type", "application/json")])?;
-                resp.write_all(err.as_bytes())?;
+                resp.write(err.as_bytes())?;
             }
             Ok(())
         })?;

@@ -4,7 +4,7 @@
 /// - Clockwise/counter-clockwise rotation detection
 /// - Short press / long press differentiation
 /// - Backlight control via GPIO
-use esp_idf_hal::gpio::{Input, InputPin, Output, OutputPin, PinDriver, Pull};
+use esp_idf_hal::gpio::{Input, InputPin, Output, OutputPin, Pin, PinDriver, Pull};
 use esp_idf_hal::peripheral::Peripheral;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -26,11 +26,11 @@ pub enum EncoderEvent {
 }
 
 /// Rotary encoder with button and backlight control
-pub struct Encoder<'d> {
-    clk: PinDriver<'d, Input>,
-    dt: PinDriver<'d, Input>,
-    sw: PinDriver<'d, Input>,
-    backlight: PinDriver<'d, Output>,
+pub struct Encoder<'d, CLK: Pin, DT: Pin, SW: Pin, BL: Pin> {
+    clk: PinDriver<'d, CLK, Input>,
+    dt: PinDriver<'d, DT, Input>,
+    sw: PinDriver<'d, SW, Input>,
+    backlight: PinDriver<'d, BL, Output>,
     last_clk: bool,
     button_press_time: Option<Instant>,
     last_button_time: Instant,
@@ -38,13 +38,13 @@ pub struct Encoder<'d> {
     backlight_on: Arc<AtomicBool>,
 }
 
-impl<'d> Encoder<'d> {
+impl<'d, CLK: InputPin + OutputPin, DT: InputPin + OutputPin, SW: InputPin + OutputPin, BL: OutputPin> Encoder<'d, CLK, DT, SW, BL> {
     /// Create a new encoder instance
     pub fn new(
-        clk_pin: impl Peripheral<P = impl InputPin> + 'd,
-        dt_pin: impl Peripheral<P = impl InputPin> + 'd,
-        sw_pin: impl Peripheral<P = impl InputPin> + 'd,
-        bl_pin: impl Peripheral<P = impl OutputPin> + 'd,
+        clk_pin: impl Peripheral<P = CLK> + 'd,
+        dt_pin: impl Peripheral<P = DT> + 'd,
+        sw_pin: impl Peripheral<P = SW> + 'd,
+        bl_pin: impl Peripheral<P = BL> + 'd,
         backlight_on: Arc<AtomicBool>,
     ) -> Result<Self, esp_idf_hal::sys::EspError> {
         let mut clk = PinDriver::input(clk_pin)?;

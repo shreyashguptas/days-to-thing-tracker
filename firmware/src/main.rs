@@ -26,7 +26,7 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use chrono::NaiveDate;
 use display_interface_spi::SPIInterface;
 use mipidsi::models::ST7735s;
-use mipidsi::options::{ColorInversion, Rotation};
+use mipidsi::options::{ColorInversion, Orientation, Rotation};
 use mipidsi::Builder;
 
 mod config;
@@ -85,8 +85,8 @@ fn main() {
 
     let mut hw_display = Builder::new(ST7735s, spi_iface)
         .reset_pin(rst)
-        .color_inversion(ColorInversion::Normal)
-        .rotation(Rotation::Deg0)
+        .invert_colors(ColorInversion::Normal)
+        .orientation(Orientation::new())
         .init(&mut FreeRtos)
         .unwrap();
 
@@ -131,12 +131,7 @@ fn main() {
     }
 
     // Use SPIFFS for storage (configured as LittleFS-compatible in partitions)
-    let storage_conf = esp_idf_svc::fs::SpiffsConfiguration {
-        partition_label: Some(config::STORAGE_PARTITION),
-        max_files: 5,
-        ..Default::default()
-    };
-    let _spiffs = esp_idf_svc::fs::EspSpiffs::new(&storage_conf);
+    let _spiffs = unsafe { esp_idf_svc::fs::spiffs::Spiffs::new(config::STORAGE_PARTITION) };
 
     let storage = Arc::new(Mutex::new(Storage::new(
         config::TASKS_FILE,
@@ -415,14 +410,10 @@ fn render_current_view(
 }
 
 /// Flush framebuffer to the hardware display
-fn flush_to_display<DI, RST>(
-    display: &mut mipidsi::Display<DI, ST7735s, RST>,
+fn flush_to_display(
+    display: &mut impl embedded_graphics_core::draw_target::DrawTarget<Color = embedded_graphics_core::pixelcolor::Rgb565>,
     fb: &FrameBuffer,
-) where
-    DI: display_interface_spi::WriteOnlyDataCommand,
-    RST: embedded_hal::digital::OutputPin,
-{
-    use embedded_graphics_core::draw_target::DrawTarget;
+) {
     use embedded_graphics_core::geometry::Point;
     use embedded_graphics_core::pixelcolor::Rgb565;
     use embedded_graphics_core::Pixel;
