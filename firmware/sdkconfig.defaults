@@ -1,0 +1,27 @@
+# WiFi SoftAP configuration
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=y
+CONFIG_ESP_WIFI_NAN_ENABLE=n
+
+# Custom partition table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Main task stack size (16KB for display rendering)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# HTTP server config
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
+
+# Logging
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# LittleFS support
+CONFIG_LITTLEFS_MAX_PARTITIONS=3
+
+# SPI RAM (not available on C6, but ensure config is clean)
+CONFIG_SPIRAM=n
+
+# Disable unused features to save flash
+CONFIG_BT_ENABLED=n
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=n

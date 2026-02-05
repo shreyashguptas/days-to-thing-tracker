@@ -1,27 +1,20 @@
-//! Rotary encoder handling with GPIO
-//!
-//! Provides low-latency input handling for the KY-040 rotary encoder:
-//! - Clockwise/counter-clockwise rotation detection
-//! - Short press / long press differentiation
-//! - Backlight control via GPIO
-
-use rppal::gpio::{Gpio, InputPin, OutputPin, Level};
+/// Rotary encoder handling with ESP-IDF GPIO
+///
+/// Provides low-latency input handling for the KY-040 rotary encoder:
+/// - Clockwise/counter-clockwise rotation detection
+/// - Short press / long press differentiation
+/// - Backlight control via GPIO
+use esp_idf_hal::gpio::{Input, InputPin, Output, OutputPin, PinDriver, Pull};
+use esp_idf_hal::peripheral::Peripheral;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
-use thiserror::Error;
 
 /// Long press threshold in seconds
 const LONG_PRESS_TIME: f64 = 0.5;
 
 /// Debounce time for button in seconds
 const BUTTON_DEBOUNCE: f64 = 0.2;
-
-#[derive(Error, Debug)]
-pub enum EncoderError {
-    #[error("GPIO error: {0}")]
-    Gpio(#[from] rppal::gpio::Error),
-}
 
 /// Events produced by the encoder
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,43 +26,38 @@ pub enum EncoderEvent {
 }
 
 /// Rotary encoder with button and backlight control
-pub struct Encoder {
-    clk: InputPin,
-    dt: InputPin,
-    sw: InputPin,
-    backlight: Option<OutputPin>,
-    last_clk: Level,
+pub struct Encoder<'d> {
+    clk: PinDriver<'d, Input>,
+    dt: PinDriver<'d, Input>,
+    sw: PinDriver<'d, Input>,
+    backlight: PinDriver<'d, Output>,
+    last_clk: bool,
     button_press_time: Option<Instant>,
     last_button_time: Instant,
     last_activity: Instant,
     backlight_on: Arc<AtomicBool>,
 }
 
-impl Encoder {
+impl<'d> Encoder<'d> {
     /// Create a new encoder instance
     pub fn new(
-        clk_pin: u8,
-        dt_pin: u8,
-        sw_pin: u8,
-        bl_pin: u8,
+        clk_pin: impl Peripheral<P = impl InputPin> + 'd,
+        dt_pin: impl Peripheral<P = impl InputPin> + 'd,
+        sw_pin: impl Peripheral<P = impl InputPin> + 'd,
+        bl_pin: impl Peripheral<P = impl OutputPin> + 'd,
         backlight_on: Arc<AtomicBool>,
-    ) -> Result<Self, EncoderError> {
-        let gpio = Gpio::new()?;
+    ) -> Result<Self, esp_idf_hal::sys::EspError> {
+        let mut clk = PinDriver::input(clk_pin)?;
+        clk.set_pull(Pull::Up)?;
 
-        let clk = gpio.get(clk_pin)?.into_input_pullup();
-        let dt = gpio.get(dt_pin)?.into_input_pullup();
-        let sw = gpio.get(sw_pin)?.into_input_pullup();
+        let mut dt = PinDriver::input(dt_pin)?;
+        dt.set_pull(Pull::Up)?;
 
-        // Try to initialize backlight GPIO (may fail if already in use)
-        let backlight = gpio.get(bl_pin)
-            .map(|p| p.into_output_high())
-            .ok();
+        let mut sw = PinDriver::input(sw_pin)?;
+        sw.set_pull(Pull::Up)?;
 
-        if backlight.is_some() {
-            println!("  Backlight GPIO {} initialized", bl_pin);
-        } else {
-            println!("  Backlight GPIO {} not available", bl_pin);
-        }
+        let mut backlight = PinDriver::output(bl_pin)?;
+        backlight.set_high()?;
 
         let now = Instant::now();
 
@@ -78,7 +66,7 @@ impl Encoder {
             dt,
             sw,
             backlight,
-            last_clk: Level::High,
+            last_clk: true, // Pull-up, so high is default
             button_press_time: None,
             last_button_time: now,
             last_activity: now,
@@ -89,15 +77,15 @@ impl Encoder {
     /// Poll for encoder events (non-blocking)
     pub fn poll(&mut self) -> Option<EncoderEvent> {
         // Check rotation
-        let clk_state = self.clk.read();
+        let clk_state = self.clk.is_high();
 
         // Detect falling edge on CLK
-        if clk_state == Level::Low && self.last_clk == Level::High {
+        if !clk_state && self.last_clk {
             self.last_clk = clk_state;
             self.record_activity();
 
             // DT high = clockwise, DT low = counter-clockwise
-            return Some(if self.dt.read() == Level::High {
+            return Some(if self.dt.is_high() {
                 EncoderEvent::Clockwise
             } else {
                 EncoderEvent::CounterClockwise
@@ -105,8 +93,8 @@ impl Encoder {
         }
         self.last_clk = clk_state;
 
-        // Check button state
-        let button_pressed = self.sw.read() == Level::Low;
+        // Check button state (active low with pull-up)
+        let button_pressed = self.sw.is_low();
         let now = Instant::now();
 
         match (button_pressed, self.button_press_time) {
@@ -140,28 +128,31 @@ impl Encoder {
 
     /// Set backlight state
     pub fn set_backlight(&mut self, on: bool) {
-        if let Some(ref mut bl) = self.backlight {
-            if on {
-                bl.set_high();
-            } else {
-                bl.set_low();
-            }
+        if on {
+            let _ = self.backlight.set_high();
+        } else {
+            let _ = self.backlight.set_low();
         }
+        self.backlight_on.store(on, Ordering::SeqCst);
     }
 
     /// Record user activity
-    pub fn record_activity(&mut self) {
+    fn record_activity(&mut self) {
         self.last_activity = Instant::now();
 
         // Wake up screen if it was off
         if !self.backlight_on.load(Ordering::SeqCst) {
             self.set_backlight(true);
-            self.backlight_on.store(true, Ordering::SeqCst);
         }
     }
 
     /// Get seconds since last activity
     pub fn seconds_since_activity(&self) -> f64 {
         self.last_activity.elapsed().as_secs_f64()
+    }
+
+    /// Check if backlight is currently on
+    pub fn is_backlight_on(&self) -> bool {
+        self.backlight_on.load(Ordering::SeqCst)
     }
 }

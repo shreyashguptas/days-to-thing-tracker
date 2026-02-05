@@ -1,22 +1,12 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-.venv/
-ENV/
-.eggs/
-*.egg-info/
-*.egg
-
-# Rust
+# Rust / ESP32
 /target/
-rust/**/target/
+firmware/target/
+firmware/.embuild/
 **/*.rs.bk
 Cargo.lock
+*.bin
+*.elf
+*.map
 
 # Data files
 *.db
@@ -39,9 +29,6 @@ Cargo.lock
 .LSOverride
 
 # Build artifacts
-*.so
-*.dylib
-*.dll
 dist/
 build/
 

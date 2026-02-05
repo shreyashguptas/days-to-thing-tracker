@@ -1,281 +1,90 @@
 # Days Tracker Kiosk
 
-A standalone kiosk application for tracking recurring tasks on a Raspberry Pi Zero 2 W with a 160x128 TFT display and rotary encoder.
+A standalone embedded device for tracking recurring tasks. Runs on a Seeed XIAO ESP32-C6 with a 160x128 TFT display and rotary encoder. No internet required -- the device creates its own WiFi hotspot. Scan the QR code on the display to manage tasks from your phone.
 
 ## Features
 
-- **Standalone operation**: No server required, runs entirely on the Pi
-- **Direct framebuffer rendering**: No browser overhead, instant response
-- **Rotary encoder navigation**: Scroll through tasks, select actions
-- **QR code for mobile management**: Scan to add/edit tasks from your phone
-- **Screen timeout**: Automatic backlight control to save power
-- **REST API**: Manage tasks from any device on your network
-- **SQLite storage**: Local database with optional SMB backup
+- **Standalone WiFi hotspot**: Device creates its own network, works anywhere with power
+- **Phone-based management**: Scan QR code to connect and manage tasks via web UI
+- **160x128 TFT display**: Dark theme, task cards, dashboard with urgency counts
+- **Rotary encoder navigation**: Scroll through tasks, select actions, long press to go back
+- **Recurring tasks**: Daily, weekly, monthly, yearly recurrence
+- **Completion history**: Track when tasks were completed
+- **Screen timeout**: Automatic backlight off after 5 minutes idle
+- **No internet / no cloud**: All data stored locally on device flash
 
-## Hardware Requirements
+## Hardware
 
 | Component | Model | Notes |
 |-----------|-------|-------|
-| Single Board Computer | Raspberry Pi Zero 2 W | Other Pi models should work |
-| Display | 160x128 TFT (ST7735) | SPI interface, 1.8" typical |
+| Microcontroller | Seeed XIAO ESP32-C6 | RISC-V, WiFi 6, ~$5 |
+| Display | 1.8" 160x128 TFT (ST7735) | SPI interface |
 | Input | KY-040 Rotary Encoder | With push button |
-| Storage | microSD card (8GB+) | For OS and data |
-| Power | 5V 2A USB power supply | |
-
-## Quick Start
-
-After flashing Raspberry Pi OS and connecting via SSH:
-
-```bash
-# Clone the repository
-git clone https://github.com/shreyashguptas/days-to-thing-tracker.git
-cd days-to-thing-tracker
-
-# Run the setup script and select "3) Fresh Install"
-./deploy.sh
-```
-
-This handles everything: system packages, swap file, Rust, Python, and services. For detailed manual steps, see the [Complete Installation Guide](#complete-installation-guide) below.
+| Power | USB-C (from XIAO board) | |
 
 ## Wiring
 
-See [docs/pinout.md](docs/pinout.md) for complete pinout diagram.
+See [docs/pinout.md](docs/pinout.md) for full wiring diagram.
 
-**Quick Reference:**
+**Quick reference:**
 
-| Component | Pin | GPIO | Physical Pin |
-|-----------|-----|------|--------------|
-| Display BL (Backlight) | BL | 18 | 12 |
-| Display CS | CS | 8 | 24 |
-| Display DC | DC | 25 | 22 |
-| Display RST | RST | 24 | 18 |
-| Display MOSI | SDA | 10 | 19 |
-| Display SCK | SCL | 11 | 23 |
-| Display VCC | - | - | 1 (3.3V) |
-| Display GND | - | - | 9 |
-| Encoder CLK | CLK | 17 | 11 |
-| Encoder DT | DT | 27 | 13 |
-| Encoder SW | SW | 22 | 15 |
-| Encoder + | - | - | 1 (3.3V) |
-| Encoder GND | - | - | 6 |
+| Component | Pin | XIAO Pin | GPIO |
+|-----------|-----|----------|------|
+| Display SCK | SCK/SCL | D8 | GPIO19 |
+| Display MOSI | MOSI/SDA | D10 | GPIO18 |
+| Display CS | CS | D3 | GPIO21 |
+| Display DC | DC/RS | D4 | GPIO22 |
+| Display RST | RST/RES | D5 | GPIO23 |
+| Display Backlight | BL | D9 | GPIO20 |
+| Encoder CLK | CLK | D0 | GPIO0 |
+| Encoder DT | DT | D1 | GPIO1 |
+| Encoder SW | SW | D2 | GPIO2 |
+| Display/Encoder VCC | - | 3V3 | - |
+| Display/Encoder GND | - | GND | - |
 
----
+## Building and Flashing
 
-## Complete Installation Guide
+### Prerequisites
 
-This guide is for **Raspberry Pi OS Bookworm** (released 2024+) which includes Python 3.11+/3.13.
-
-### Step 1: Flash Raspberry Pi OS
-
-1. Download [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
-2. Select **Raspberry Pi OS Lite (64-bit)** - Bookworm or newer
-3. Click the gear icon to configure:
-   - Set hostname (e.g., `daystracker`)
-   - Enable SSH with password authentication
-   - Set username and password (e.g., `shreyash`)
-   - Configure WiFi (SSID and password)
-   - Set locale/timezone
-4. Flash to your microSD card
-5. Insert card into Pi and power on
-
-### Step 2: Connect via SSH
+Install the ESP32 Rust toolchain:
 
 ```bash
-# Wait 1-2 minutes for first boot, then:
-ssh youruser@daystracker.local
-# Or use IP address: ssh youruser@192.168.x.x
+# Install espup (ESP32 Rust toolchain manager)
+cargo install espup
+espup install
+
+# Install flash tool and linker proxy
+cargo install espflash ldproxy
+
+# Load the ESP environment (add to your shell profile)
+source $HOME/export-esp.sh
 ```
 
-### Step 3: Configure Display Driver
-
-The ST7735 display requires the fbtft framebuffer driver.
+### Build and Flash
 
 ```bash
-# Edit boot config
-sudo nano /boot/firmware/config.txt
+cd firmware
+cargo run --release
 ```
 
-Add these lines at the end:
+This builds the firmware and flashes it to the connected XIAO ESP32-C6 via USB-C. The serial monitor will start automatically after flashing.
 
-```ini
-# Enable SPI
-dtparam=spi=on
-
-# ST7735 160x128 TFT Display (fbtft driver)
-# DC=GPIO25, RST=GPIO24, rotate 90 for landscape
-dtoverlay=adafruit18,dc_pin=25,reset_pin=24,speed=32000000,rotate=90
-```
-
-Save and exit (Ctrl+X, Y, Enter).
-
-**Disable Linux console on TFT** (prevents login screen from appearing):
+### Build Only (no flash)
 
 ```bash
-# Edit kernel command line
-sudo nano /boot/firmware/cmdline.txt
+cd firmware
+cargo build --release
 ```
-
-Add `fbcon=map:10` to the END of the single line (don't create a new line):
-
-```
-... rootwait fbcon=map:10
-```
-
-This maps the console to a non-existent framebuffer, so the TFT stays blank until the kiosk starts.
-
-**Reboot to apply:**
-```bash
-sudo reboot
-```
-
-### Step 4: Verify Display
-
-After reboot, verify the framebuffer device exists:
-
-```bash
-ssh youruser@daystracker.local
-
-# Check for framebuffer
-ls -la /dev/fb*
-# Should show: /dev/fb0
-
-# Test display (should show red screen)
-dd if=/dev/zero bs=1 count=$((160*128*2)) | tr '\0' '\377' > /dev/fb0
-```
-
-### Step 5: Install Dependencies
-
-```bash
-# Update system
-sudo apt-get update
-sudo apt-get upgrade -y
-
-# Install required packages
-sudo apt-get install -y \
-    python3-pip \
-    python3-venv \
-    python3-dev \
-    build-essential \
-    pkg-config \
-    libffi-dev \
-    git \
-    curl
-```
-
-### Step 6: Install Rust
-
-Rust is required to build the kiosk-core library.
-
-**Important:** The Pi Zero 2 W has limited RAM (512MB). Create a swap file first to prevent the installation from being killed:
-
-```bash
-# Create 1GB swap file (required for Pi Zero 2 W)
-sudo fallocate -l 1G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-
-# Make swap permanent (survives reboot)
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-
-# Verify swap is active
-free -h
-```
-
-Now install Rust:
-
-```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-
-# Load Rust environment
-source "$HOME/.cargo/env"
-
-# Verify installation
-rustc --version
-cargo --version
-```
-
-### Step 7: Clone and Setup Project
-
-```bash
-# Clone repository
-cd ~
-git clone https://github.com/shreyashguptas/days-to-thing-tracker.git
-cd days-to-thing-tracker
-
-# Create Python virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install Python dependencies
-pip install --upgrade pip
-pip install -r python/requirements.txt
-
-# Install maturin (Rust-Python build tool)
-pip install maturin
-```
-
-### Step 8: Build Rust Library
-
-```bash
-cd ~/days-to-thing-tracker/rust/kiosk-core
-
-# Build and install (this takes 5-10 minutes on Pi Zero 2 W)
-maturin build --release
-
-# Install the wheel
-pip install target/wheels/*.whl
-
-# Verify it works
-python -c "import kiosk_core; print('kiosk_core loaded successfully')"
-```
-
-### Step 9: Create Data Directory
-
-```bash
-cd ~/days-to-thing-tracker
-mkdir -p data
-```
-
-### Step 10: Install Systemd Services
-
-```bash
-# Copy service files
-sudo cp systemd/kiosk-tracker.service /etc/systemd/system/
-sudo cp systemd/kiosk-api.service /etc/systemd/system/
-
-# Reload systemd
-sudo systemctl daemon-reload
-
-# Enable services to start at boot
-sudo systemctl enable kiosk-tracker
-sudo systemctl enable kiosk-api
-
-# Start services
-sudo systemctl start kiosk-tracker
-sudo systemctl start kiosk-api
-```
-
-### Step 11: Verify Everything Works
-
-```bash
-# Check kiosk status
-sudo systemctl status kiosk-tracker
-
-# Check API status
-sudo systemctl status kiosk-api
-
-# View logs if needed
-journalctl -u kiosk-tracker -f
-journalctl -u kiosk-api -f
-```
-
-The display should now show "No tasks" or your task list. The API is available at `http://daystracker.local:8080`.
-
----
 
 ## Usage
+
+### First Boot
+
+1. Power the device via USB-C
+2. The display shows "Starting..." then "Starting WiFi..."
+3. If no tasks exist, a QR code appears for WiFi connection
+4. Scan the QR code with your phone to connect to the "DaysTracker" WiFi network
+5. Open `http://192.168.4.1` in your phone browser to manage tasks
 
 ### Controls
 
@@ -284,304 +93,148 @@ The display should now show "No tasks" or your task list. The API is available a
 | Rotate clockwise | Scroll down / Next item |
 | Rotate counter-clockwise | Scroll up / Previous item |
 | Short press | Select / Confirm |
-| Long press (>0.5s) | Back / Open Settings |
+| Long press (>0.5s) | Back / Go to previous screen |
 
-### Adding Tasks via QR Code
+### Dashboard
 
-1. From the task list, **long press** to open Settings
-2. Select **Manage Tasks**
-3. A QR code appears - scan it with your phone
-4. Use the mobile web interface to add/edit/delete tasks
-5. **Long press** to go back to Settings, then select **Back**
+The home screen shows urgency counts:
+- **Overdue**: Tasks past their due date
+- **Today**: Tasks due today
+- **This Week**: Tasks due within 7 days
+- **Total**: All tasks
 
-### Adding Tasks via API
+Select a category to filter, or select "All Tasks" to see everything.
 
-```bash
-curl -X POST http://daystracker.local:8080/api/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Water Plants",
-    "recurrenceType": "days",
-    "recurrenceValue": 3,
-    "nextDueDate": "2025-01-10"
-  }'
-```
+### Task Actions
 
-### Settings Menu
-
-Long press from task list to access:
-- **Manage Tasks**: Shows QR code for mobile management
-- **Screen Timeout**: Toggle auto-off after 5 minutes idle
+Press on a task card to see:
+- **Done**: Mark task complete (advances to next due date)
+- **History**: View completion history
+- **Delete**: Remove the task
 - **Back**: Return to task list
 
----
+### Settings
 
-## Updating / Deploying Changes
+From the dashboard, select "Settings":
+- **Manage Tasks**: Shows WiFi QR code for phone access
+- **Screen Timeout**: Toggle auto-off after 5 minutes idle
 
-### Using the Deploy Script (Recommended)
+### Adding Tasks
 
-The easiest way to manage the kiosk is with the interactive deploy script:
+1. Connect your phone to the "DaysTracker" WiFi network (password: `tracker123`)
+2. Open `http://192.168.4.1` in your browser
+3. Use the web interface to create, edit, or delete tasks
+4. The kiosk display updates on the next interaction
 
-```bash
-ssh youruser@daystracker.local
-cd ~/days-to-thing-tracker
-./deploy.sh
-```
+## API
 
-This shows a menu with options:
-
-```
-╔════════════════════════════════════════════╗
-║       Days Tracker Kiosk Deployment        ║
-╚════════════════════════════════════════════╝
-
-What would you like to do?
-
-  1) Quick Update     - Pull changes & restart services (Python only)
-  2) Full Update      - Pull changes, rebuild Rust, restart services
-  3) Fresh Install    - First-time setup (installs everything)
-  4) Restart Services - Just restart kiosk and API services
-  5) View Logs        - Show recent kiosk logs
-  6) Check Status     - Show service status and system info
-  7) Boot Config      - Show instructions for boot configuration
-  8) Exit
-```
-
-- **Option 1 (Quick Update)**: Use after Python-only changes
-- **Option 2 (Full Update)**: Use after Rust code changes (takes 5-10 min)
-- **Option 3 (Fresh Install)**: Use on a new Pi or to reinstall everything
-- **Option 7 (Boot Config)**: Shows what to add to config.txt and cmdline.txt
-
-### Manual Commands (Alternative)
-
-If you prefer running commands manually:
-
-#### Quick Update (Python changes only)
-
-```bash
-ssh youruser@daystracker.local
-cd ~/days-to-thing-tracker
-
-# Pull latest changes
-git pull
-
-# Restart services
-sudo systemctl restart kiosk-tracker
-sudo systemctl restart kiosk-api
-```
-
-#### Full Update (Rust changes)
-
-```bash
-ssh youruser@daystracker.local
-cd ~/days-to-thing-tracker
-
-# Pull latest changes
-git pull
-
-# Activate virtual environment
-source venv/bin/activate
-
-# Rebuild Rust library
-cd rust/kiosk-core
-maturin build --release
-pip install target/wheels/*.whl --force-reinstall
-
-# Restart services
-cd ~/days-to-thing-tracker
-sudo systemctl restart kiosk-tracker
-sudo systemctl restart kiosk-api
-```
-
-### Update Script
-
-For convenience, create an update script:
-
-```bash
-# Create update script
-cat > ~/update-kiosk.sh << 'EOF'
-#!/bin/bash
-set -e
-cd ~/days-to-thing-tracker
-git pull
-source venv/bin/activate
-cd rust/kiosk-core
-maturin build --release
-pip install target/wheels/*.whl --force-reinstall
-cd ~/days-to-thing-tracker
-sudo systemctl restart kiosk-tracker
-sudo systemctl restart kiosk-api
-echo "Update complete!"
-EOF
-
-chmod +x ~/update-kiosk.sh
-```
-
-Then just run `~/update-kiosk.sh` to update.
-
----
-
-## Troubleshooting
-
-### Login screen appears on TFT at boot
-
-The Linux console is being displayed on the TFT. Fix by disabling fbcon:
-
-```bash
-# Edit kernel command line
-sudo nano /boot/firmware/cmdline.txt
-
-# Add to END of line (don't create new line):
-fbcon=map:10
-
-# Reboot
-sudo reboot
-```
-
-### Kiosk takes too long to start
-
-Update the service file to start earlier:
-
-```bash
-sudo cp ~/days-to-thing-tracker/systemd/kiosk-tracker.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl restart kiosk-tracker
-```
-
-### Display shows white/blank
-
-1. **Check wiring** - especially DC (GPIO 25) and RST (GPIO 24)
-2. **Verify overlay** - ensure `/boot/firmware/config.txt` has the adafruit18 overlay
-3. **Check framebuffer**:
-   ```bash
-   ls /dev/fb0  # Should exist
-   cat /sys/class/graphics/fb0/name  # Should show "fb_st7735r"
-   ```
-4. **Reboot** after config changes
-
-### Encoder not responding
-
-1. **Check wiring** - CLK=GPIO17, DT=GPIO27, SW=GPIO22
-2. **Check service logs**: `journalctl -u kiosk-tracker -f`
-3. **Test GPIO**:
-   ```bash
-   sudo apt-get install -y python3-gpiozero
-   python3 -c "from gpiozero import Button; b = Button(22); print('Press encoder...'); b.wait_for_press(); print('Pressed!')"
-   ```
-
-### Python 3.13 / PyO3 errors
-
-The Rust library uses PyO3 0.22 which supports Python 3.13. If you get import errors:
-
-```bash
-cd ~/days-to-thing-tracker/rust/kiosk-core
-source ~/days-to-thing-tracker/venv/bin/activate
-maturin build --release
-pip install target/wheels/*.whl --force-reinstall
-```
-
-### Service won't start
-
-```bash
-# Check logs
-journalctl -u kiosk-tracker -n 50
-
-# Common fixes:
-# 1. Verify paths in service file match your username
-sudo nano /etc/systemd/system/kiosk-tracker.service
-
-# 2. Reload after editing
-sudo systemctl daemon-reload
-sudo systemctl restart kiosk-tracker
-```
-
-### API not accessible
-
-1. **Check if running**: `sudo systemctl status kiosk-api`
-2. **Check firewall**: `sudo ufw status` (if enabled, allow port 8080)
-3. **Test locally**: `curl http://localhost:8080/health`
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Python Application                    │
-│  main.py - Event loop, business logic                   │
-│  database.py - SQLite operations                        │
-│  views.py - Navigation state machine                    │
-│  api.py - REST API + Web UI for remote management       │
-└─────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────┐
-│                 Rust Core (kiosk_core)                  │
-│  encoder.rs - GPIO input handling (<10µs latency)       │
-│  display.rs - Direct framebuffer rendering              │
-│  renderer.rs - UI widgets and layout                    │
-└─────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-              ┌────────────┴────────────┐
-              │                         │
-         GPIO 17,27,22             /dev/fb0
-       (Rotary Encoder)          (TFT Display)
-```
-
-## Project Structure
-
-```
-days-to-thing-tracker/
-├── python/                 # Python application
-│   ├── main.py            # Entry point
-│   ├── database.py        # SQLite operations
-│   ├── models.py          # Data models
-│   ├── views.py           # Navigation state
-│   ├── api.py             # REST API
-│   ├── config.py          # Configuration
-│   └── templates/         # Web UI
-│       └── index.html     # Mobile task management
-├── rust/                   # Rust core library
-│   └── kiosk-core/
-│       └── src/
-│           ├── lib.rs     # PyO3 module
-│           ├── encoder.rs # GPIO handling
-│           ├── display.rs # Framebuffer
-│           ├── renderer.rs # UI rendering
-│           └── theme.rs   # Colors
-├── systemd/               # Service files
-├── docs/                  # Documentation
-│   └── pinout.md         # Wiring diagram
-├── deploy.sh              # Deployment and setup script
-└── Cargo.toml             # Rust workspace
-```
-
-## API Endpoints
-
-The REST API runs on port 8080:
+The device runs an HTTP server on port 80 at `192.168.4.1`:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/` | Web UI for task management |
+| GET | `/` | Web UI |
+| GET | `/health` | Health check |
 | GET | `/api/tasks` | List all tasks |
 | POST | `/api/tasks` | Create task |
 | GET | `/api/tasks/:id` | Get task |
 | PUT | `/api/tasks/:id` | Update task |
 | DELETE | `/api/tasks/:id` | Delete task |
 | POST | `/api/tasks/:id/complete` | Mark complete |
-| GET | `/api/tasks/:id/history` | Get history |
-| GET | `/health` | Health check |
+| GET | `/api/tasks/:id/history` | Completion history |
+| POST | `/api/time` | Sync time from phone |
+
+### Example: Create a Task
+
+```bash
+# Connect to DaysTracker WiFi first, then:
+curl -X POST http://192.168.4.1/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Water Plants",
+    "recurrenceType": "daily",
+    "recurrenceValue": 3,
+    "nextDueDate": "2025-01-10"
+  }'
+```
+
+## Project Structure
+
+```
+firmware/
+  .cargo/config.toml      # RISC-V target, ESP-IDF linker
+  Cargo.toml               # Dependencies
+  build.rs                 # ESP-IDF build integration
+  sdkconfig.defaults       # ESP-IDF config (WiFi, partitions)
+  partitions.csv           # Flash layout (2MB app + 1.9MB storage)
+  src/
+    main.rs                # Entry point, event loop
+    config.rs              # Pin assignments, WiFi credentials, timings
+    models.rs              # Task, CompletionRecord, RecurrenceType
+    storage.rs             # JSON CRUD on flash
+    views.rs               # View state machine (9 states)
+    renderer.rs            # All UI rendering (13+ views)
+    encoder.rs             # KY-040 rotary encoder via GPIO
+    display.rs             # ST7735 SPI display + framebuffer
+    theme.rs               # RGB565 color constants
+    fonts.rs               # 5x7 and 12x18 bitmap font data
+    http_server.rs         # REST API (10 endpoints)
+    wifi.rs                # WiFi SoftAP setup
+  static/
+    index.html             # Web UI (embedded at compile time)
+docs/
+  pinout.md                # Wiring diagram
+product-site/              # Marketing website
+```
 
 ## Configuration
 
-Environment variables (set in systemd service or shell):
+Edit `firmware/src/config.rs` to change:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `KIOSK_DATA_DIR` | `./data` | Database location |
-| `KIOSK_WEB_URL` | auto-detect | URL shown in QR code |
-| `KIOSK_HOSTNAME` | system hostname | Hostname for QR URL |
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `AP_SSID` | `DaysTracker` | WiFi network name |
+| `AP_PASSWORD` | `tracker123` | WiFi password |
+| `IDLE_TIMEOUT_SECS` | `300` | Seconds before backlight off |
+| `SPI_FREQ_HZ` | `32000000` | SPI clock speed (32 MHz) |
+
+## Troubleshooting
+
+### Display shows nothing
+
+1. Check wiring matches [docs/pinout.md](docs/pinout.md)
+2. Verify SPI connections: SCK (D8), MOSI (D10), CS (D3), DC (D4), RST (D5)
+3. Check backlight wire on D9
+4. Check serial monitor output for errors: `cargo run --release`
+
+### Encoder not responding
+
+1. Verify wiring: CLK (D0), DT (D1), SW (D2)
+2. Check 3.3V and GND connections
+3. Check serial monitor for encoder events
+
+### Phone can't connect to WiFi
+
+1. Look for "DaysTracker" network on your phone
+2. Password is `tracker123`
+3. If not visible, check serial monitor -- WiFi AP should show "ready"
+
+### Web UI not loading
+
+1. Ensure phone is connected to DaysTracker WiFi
+2. Open `http://192.168.4.1` (not https)
+3. Disable mobile data on your phone (some phones prefer cellular)
+
+### Build errors
+
+```bash
+# Make sure ESP toolchain is loaded
+source $HOME/export-esp.sh
+
+# Clean and rebuild
+cd firmware
+cargo clean
+cargo run --release
+```
 
 ## License
 

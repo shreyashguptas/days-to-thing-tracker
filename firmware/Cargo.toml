@@ -1,0 +1,38 @@
+[package]
+name = "days-tracker-firmware"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+
+[profile.dev]
+debug = true
+opt-level = "z"
+
+[dependencies]
+esp-idf-hal = "0.44"
+esp-idf-svc = { version = "0.49", features = ["experimental"] }
+esp-idf-sys = { version = "0.35", features = ["binstart"] }
+
+# Display
+mipidsi = "0.8"
+display-interface-spi = "0.5"
+embedded-graphics = "0.8"
+embedded-graphics-core = "0.4"
+
+# Data
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+chrono = { version = "0.4", default-features = false, features = ["alloc", "serde"] }
+
+# QR code
+qrcode = { version = "0.14", default-features = false }
+
+# Logging
+log = "0.4"
+
+[build-dependencies]
+embuild = "0.32"
