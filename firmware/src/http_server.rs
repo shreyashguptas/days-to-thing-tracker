@@ -246,7 +246,7 @@ pub fn start_server(
                 "ssid": mode.ssid().unwrap_or(""),
                 "ip": format!("{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3]),
                 "connected": mode.is_station(),
-                "hostname": config::MDNS_HOSTNAME,
+                "hostname": "daystracker",
             })
             .to_string();
             let mut resp = req.into_ok_response()?;
@@ -603,7 +603,7 @@ fn register_task_routes(
 }
 
 /// Get today's date from the shared time source
-fn get_today(time: &SharedTime) -> NaiveDate {
+pub fn get_today(time: &SharedTime) -> NaiveDate {
     let secs = time.lock().unwrap().unwrap_or(0);
     if secs > 0 {
         chrono::DateTime::from_timestamp(secs, 0)
@@ -616,7 +616,7 @@ fn get_today(time: &SharedTime) -> NaiveDate {
 }
 
 /// Get current datetime as ISO string
-fn get_now_iso(time: &SharedTime) -> String {
+pub fn get_now_iso(time: &SharedTime) -> String {
     let secs = time.lock().unwrap().unwrap_or(0);
     if secs > 0 {
         chrono::DateTime::from_timestamp(secs, 0)

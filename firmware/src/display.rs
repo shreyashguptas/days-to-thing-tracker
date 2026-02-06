@@ -68,14 +68,6 @@ impl FrameBuffer {
         self.fill_rect(x, y, 1, h, color);
     }
 
-    /// Draw a rectangle outline
-    pub fn rect(&mut self, x: u32, y: u32, w: u32, h: u32, color: Rgb565) {
-        self.hline(x, y, w, color);
-        self.hline(x, y + h.saturating_sub(1), w, color);
-        self.vline(x, y, h, color);
-        self.vline(x + w.saturating_sub(1), y, h, color);
-    }
-
     /// Get display width
     pub fn width(&self) -> u32 {
         DISPLAY_WIDTH

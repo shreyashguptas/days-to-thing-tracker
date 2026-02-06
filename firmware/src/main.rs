@@ -23,7 +23,6 @@ use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::log::EspLogger;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 
-use chrono::NaiveDate;
 use display_interface_spi::SPIInterface;
 use mipidsi::models::ST7735s;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
@@ -44,7 +43,7 @@ mod wifi;
 
 use display::FrameBuffer;
 use encoder::{Encoder, EncoderEvent};
-use http_server::{SharedStorage, SharedTime, SharedWifi};
+use http_server::{get_now_iso, get_today, SharedStorage, SharedTime, SharedWifi};
 use models::{HistoryDisplayEntry, TaskDisplayData};
 use renderer::Renderer;
 use storage::Storage;
@@ -522,28 +521,4 @@ fn flush_to_display(
     });
 
     let _ = display.draw_iter(pixels);
-}
-
-/// Get today's date from the shared time source
-fn get_today(time: &SharedTime) -> NaiveDate {
-    let secs = time.lock().unwrap().unwrap_or(0);
-    if secs > 0 {
-        chrono::DateTime::from_timestamp(secs, 0)
-            .map(|dt| dt.date_naive())
-            .unwrap_or_else(|| NaiveDate::from_ymd_opt(2025, 1, 1).unwrap())
-    } else {
-        NaiveDate::from_ymd_opt(2025, 1, 1).unwrap()
-    }
-}
-
-/// Get current datetime as ISO string
-fn get_now_iso(time: &SharedTime) -> String {
-    let secs = time.lock().unwrap().unwrap_or(0);
-    if secs > 0 {
-        chrono::DateTime::from_timestamp(secs, 0)
-            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
-            .unwrap_or_else(|| String::from("2025-01-01T00:00:00"))
-    } else {
-        String::from("2025-01-01T00:00:00")
-    }
 }
