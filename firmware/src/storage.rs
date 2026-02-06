@@ -56,8 +56,35 @@ impl Storage {
         }
     }
 
-    /// Load JSON from a file
+    /// Load JSON from a file, falling back to .bak and .tmp if primary is corrupt/missing
     fn load_json<T: for<'de> Deserialize<'de>>(path: &str) -> Option<T> {
+        let bak_path = format!("{}.bak", path);
+        let tmp_path = format!("{}.tmp", path);
+
+        // Try primary
+        if let Some(data) = Self::try_read_json::<T>(path) {
+            log::info!("Loaded from primary: {}", path);
+            return Some(data);
+        }
+
+        // Try backup
+        if let Some(data) = Self::try_read_json::<T>(&bak_path) {
+            log::warn!("Primary corrupt/missing, loaded from backup: {}", bak_path);
+            return Some(data);
+        }
+
+        // Try tmp (may contain a good write that didn't get renamed)
+        if let Some(data) = Self::try_read_json::<T>(&tmp_path) {
+            log::warn!("Primary and backup failed, loaded from tmp: {}", tmp_path);
+            return Some(data);
+        }
+
+        log::info!("No existing data found for {} (will create on first write)", path);
+        None
+    }
+
+    /// Try to read and parse JSON from a single file path
+    fn try_read_json<T: for<'de> Deserialize<'de>>(path: &str) -> Option<T> {
         match std::fs::read_to_string(path) {
             Ok(contents) => match serde_json::from_str(&contents) {
                 Ok(data) => Some(data),
@@ -66,35 +93,69 @@ impl Storage {
                     None
                 }
             },
-            Err(_) => {
-                log::info!("File not found: {} (will create on first write)", path);
-                None
-            }
+            Err(_) => None,
         }
     }
 
     /// Save task store to file
     fn save_tasks(&self) {
-        match serde_json::to_string(&self.task_store) {
-            Ok(json) => {
-                if let Err(e) = std::fs::write(&self.tasks_path, json) {
-                    log::error!("Failed to save tasks: {}", e);
-                }
-            }
-            Err(e) => log::error!("Failed to serialize tasks: {}", e),
-        }
+        Self::safe_write_json(&self.tasks_path, &self.task_store);
     }
 
     /// Save history store to file
     fn save_history(&self) {
-        match serde_json::to_string(&self.history_store) {
-            Ok(json) => {
-                if let Err(e) = std::fs::write(&self.history_path, json) {
-                    log::error!("Failed to save history: {}", e);
+        Self::safe_write_json(&self.history_path, &self.history_store);
+    }
+
+    /// Atomic write: serialize → write .tmp → verify → backup old → rename .tmp → primary
+    fn safe_write_json<T: Serialize + for<'de> Deserialize<'de>>(path: &str, data: &T) {
+        let tmp_path = format!("{}.tmp", path);
+        let bak_path = format!("{}.bak", path);
+
+        // Serialize
+        let json = match serde_json::to_string(data) {
+            Ok(j) => j,
+            Err(e) => {
+                log::error!("Failed to serialize data for {}: {}", path, e);
+                return;
+            }
+        };
+
+        // Write to .tmp
+        if let Err(e) = std::fs::write(&tmp_path, &json) {
+            log::error!("Failed to write {}: {}", tmp_path, e);
+            return;
+        }
+
+        // Verify .tmp by reading it back and parsing
+        match std::fs::read_to_string(&tmp_path) {
+            Ok(contents) => {
+                if serde_json::from_str::<T>(&contents).is_err() {
+                    log::error!("Verification failed for {}, aborting save", tmp_path);
+                    let _ = std::fs::remove_file(&tmp_path);
+                    return;
                 }
             }
-            Err(e) => log::error!("Failed to serialize history: {}", e),
+            Err(e) => {
+                log::error!("Failed to read back {}: {}, aborting save", tmp_path, e);
+                return;
+            }
         }
+
+        // Backup current primary → .bak (ignore error if primary doesn't exist yet)
+        if std::fs::metadata(path).is_ok() {
+            if let Err(e) = std::fs::copy(path, &bak_path) {
+                log::warn!("Failed to create backup {}: {}", bak_path, e);
+            }
+        }
+
+        // Atomic swap: rename .tmp → primary
+        if let Err(e) = std::fs::rename(&tmp_path, path) {
+            log::error!("Failed to rename {} → {}: {}", tmp_path, path, e);
+            return;
+        }
+
+        log::info!("Saved {}", path);
     }
 
     // ========== TASK CRUD ==========
