@@ -385,6 +385,10 @@ impl ViewNavigator {
                 } else if !ctx.tasks.is_empty() {
                     ctx.action_index = 0;
                     ctx.state = ViewState::TaskActions;
+                } else {
+                    // No tasks — go to QR code so user can add tasks
+                    ctx.state = ViewState::QrCode;
+                    return Some("show_qr");
                 }
             }
             ViewState::TaskActions => {
