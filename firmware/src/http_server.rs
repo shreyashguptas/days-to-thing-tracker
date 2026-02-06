@@ -79,11 +79,12 @@ pub fn start_server(
             Ok(())
         })?;
 
-        // iOS / macOS captive portal detection
-        let redirect = url.clone();
-        server.fn_handler("/hotspot-detect.html", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
-            let mut resp = req.into_response(302, None, &[("Location", &redirect)])?;
-            resp.write(&[])?;
+        // iOS / macOS captive portal detection - serve HTML directly so captive portal sheet
+        // shows our web UI without needing an extra redirect round trip
+        server.fn_handler("/hotspot-detect.html", Method::Get, |req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            let html = include_str!("../static/index.html");
+            req.into_ok_response()?
+                .write(html.as_bytes())?;
             Ok(())
         })?;
 

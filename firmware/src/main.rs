@@ -242,9 +242,10 @@ fn main() {
         nav.set_tasks(tasks);
     }
 
-    // Show QR code if there are no tasks
-    if nav.ctx.tasks.is_empty() {
-        nav.ctx.state = ViewState::Empty;
+    // AP mode (no WiFi provisioned): show WiFi QR code as the entry point
+    // STA mode (connected to WiFi): always show Dashboard
+    if matches!(&wifi_mode, WiFiMode::AccessPoint { .. }) {
+        nav.ctx.state = ViewState::QrCode;
     }
 
     // === Main Event Loop ===

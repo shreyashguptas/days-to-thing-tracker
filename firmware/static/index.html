@@ -1,1175 +1,362 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Days Tracker</title>
-    <!-- No external fonts - device runs offline as WiFi hotspot -->
-    <style>
-        :root {
-            --bg-warm: #FEF9F3;
-            --bg-card: #FFFFFF;
-            --text-primary: #4A4A4A;
-            --text-secondary: #8B8B8B;
-            --text-light: #B5B5B5;
-
-            /* Friendly urgency colors */
-            --urgency-overdue: #FF7B7B;
-            --urgency-overdue-bg: #FFF0F0;
-            --urgency-soon: #FFB86B;
-            --urgency-soon-bg: #FFF8F0;
-            --urgency-good: #7DD3A8;
-            --urgency-good-bg: #F0FFF7;
-            --urgency-chill: #A8B4FF;
-            --urgency-chill-bg: #F5F6FF;
-
-            /* Accent colors */
-            --accent-coral: #FF8A80;
-            --accent-teal: #64D8CB;
-            --accent-purple: #B39DDB;
-
-            /* Shadows */
-            --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.06);
-            --shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.1);
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-warm);
-            background-image:
-                radial-gradient(ellipse at top left, rgba(255, 138, 128, 0.08) 0%, transparent 50%),
-                radial-gradient(ellipse at bottom right, rgba(100, 216, 203, 0.08) 0%, transparent 50%);
-            color: var(--text-primary);
-            min-height: 100vh;
-            padding: 24px 16px 100px;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 28px;
-        }
-
-        h1 {
-            font-size: 1.8rem;
-            font-weight: 800;
-            color: var(--text-primary);
-            letter-spacing: -0.02em;
-        }
-
-        .subtitle {
-            font-size: 0.95rem;
-            color: var(--text-secondary);
-            margin-top: 4px;
-        }
-
-        .tasks {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            max-width: 500px;
-            margin: 0 auto;
-        }
-
-        .task {
-            background: var(--bg-card);
-            border-radius: 20px;
-            padding: 20px;
-            box-shadow: var(--shadow-soft);
-            border: none;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .task::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            border-radius: 20px 20px 0 0;
-        }
-
-        .task:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-hover);
-        }
-
-        .task.overdue { background: var(--urgency-overdue-bg); }
-        .task.overdue::before { background: var(--urgency-overdue); }
-
-        .task.due-soon { background: var(--urgency-soon-bg); }
-        .task.due-soon::before { background: var(--urgency-soon); }
-
-        .task.on-track { background: var(--urgency-good-bg); }
-        .task.on-track::before { background: var(--urgency-good); }
-
-        .task.chill { background: var(--urgency-chill-bg); }
-        .task.chill::before { background: var(--urgency-chill); }
-
-        .task-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 16px;
-        }
-
-        .task-info {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .task-name {
-            font-weight: 700;
-            font-size: 1.15rem;
-            color: var(--text-primary);
-            line-height: 1.3;
-            word-wrap: break-word;
-        }
-
-        .task-due {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-top: 6px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .task-due::before {
-            content: '';
-            display: inline-block;
-            width: 4px;
-            height: 4px;
-            border-radius: 50%;
-            background: var(--text-light);
-        }
-
-        .task-countdown {
-            text-align: center;
-            min-width: 80px;
-        }
-
-        .task-days {
-            font-size: 2.5rem;
-            font-weight: 800;
-            line-height: 1;
-            letter-spacing: -0.03em;
-        }
-
-        .task.overdue .task-days { color: var(--urgency-overdue); }
-        .task.due-soon .task-days { color: var(--urgency-soon); }
-        .task.on-track .task-days { color: var(--urgency-good); }
-        .task.chill .task-days { color: var(--urgency-chill); }
-
-        .task-label {
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-top: 4px;
-        }
-
-        .task-actions {
-            margin-top: 16px;
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn {
-            padding: 10px 18px;
-            border: none;
-            border-radius: 12px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            font-family: inherit;
-            cursor: pointer;
-            flex: 1;
-            transition: all 0.2s ease;
-        }
-
-        .btn:active {
-            transform: scale(0.97);
-        }
-
-        .btn-done {
-            background: var(--accent-teal);
-            color: white;
-        }
-        .btn-done:hover {
-            background: #52C9BA;
-        }
-
-        .btn-edit {
-            background: var(--bg-warm);
-            color: var(--text-primary);
-            border: 2px solid rgba(0,0,0,0.08);
-        }
-        .btn-edit:hover {
-            background: #F5EDE5;
-        }
-
-        .btn-delete {
-            background: rgba(255, 123, 123, 0.15);
-            color: var(--urgency-overdue);
-        }
-        .btn-delete:hover {
-            background: rgba(255, 123, 123, 0.25);
-        }
-
-        .add-btn {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, var(--accent-coral) 0%, var(--accent-purple) 100%);
-            color: white;
-            font-size: 32px;
-            font-weight: 300;
-            line-height: 1;
-            border: none;
-            cursor: pointer;
-            box-shadow: 0 6px 24px rgba(255, 138, 128, 0.4);
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            padding-bottom: 3px;
-        }
-
-        .add-btn:hover {
-            transform: scale(1.08);
-            box-shadow: 0 8px 32px rgba(255, 138, 128, 0.5);
-        }
-
-        .add-btn:active {
-            transform: scale(1);
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(74, 74, 74, 0.4);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            padding: 16px;
-            z-index: 100;
-            overflow-y: auto;
-        }
-
-        .modal.active {
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
-            animation: fadeIn 0.2s ease;
-            padding-top: 40px;
-            padding-bottom: 40px;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        .modal-content {
-            background: var(--bg-card);
-            padding: 24px 20px;
-            border-radius: 24px;
-            width: 100%;
-            max-width: 380px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-            animation: slideUp 0.3s ease;
-            margin: auto;
-        }
-
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .modal h2 {
-            margin-bottom: 20px;
-            font-weight: 800;
-            font-size: 1.4rem;
-            color: var(--text-primary);
-            text-align: center;
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-        }
-
-        .form-group input,
-        .form-group select {
-            width: 100%;
-            padding: 12px 14px;
-            border: 2px solid rgba(0, 0, 0, 0.08);
-            border-radius: 12px;
-            background: var(--bg-warm);
-            color: var(--text-primary);
-            font-size: 16px;
-            font-family: inherit;
-            transition: all 0.2s ease;
-            -webkit-appearance: none;
-            appearance: none;
-            box-sizing: border-box;
-        }
-
-        .form-group select {
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238B8B8B' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 12px center;
-            padding-right: 36px;
-        }
-
-        .form-group input[type="date"] {
-            min-height: 48px;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: var(--accent-teal);
-            background: white;
-        }
-
-        .form-group input::placeholder {
-            color: var(--text-light);
-        }
-
-        .form-hint {
-            font-size: 0.75rem;
-            color: var(--text-light);
-            margin-top: 4px;
-        }
-
-        .recurrence-row {
-            display: flex;
-            gap: 10px;
-        }
-
-        .recurrence-row input {
-            width: 80px;
-            flex-shrink: 0;
-            text-align: center;
-        }
-
-        .recurrence-row select {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .date-row {
-            display: flex;
-            gap: 10px;
-        }
-
-        .date-row .form-group {
-            flex: 1;
-            min-width: 0;
-            margin-bottom: 0;
-        }
-
-        .calculated-date {
-            background: rgba(100, 216, 203, 0.15);
-            border-color: var(--accent-teal);
-            color: var(--text-primary);
-            font-weight: 600;
-        }
-
-        .modal-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 24px;
-        }
-
-        .btn-cancel {
-            background: var(--bg-warm);
-            color: var(--text-secondary);
-            border: 2px solid rgba(0,0,0,0.06);
-        }
-        .btn-cancel:hover {
-            background: #F0E8E0;
-        }
-
-        .btn-save {
-            background: linear-gradient(135deg, var(--accent-teal) 0%, #52C9BA 100%);
-            color: white;
-        }
-        .btn-save:hover {
-            background: linear-gradient(135deg, #52C9BA 0%, #48B8AA 100%);
-        }
-
-        .empty {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-secondary);
-            background: var(--bg-card);
-            border-radius: 24px;
-            box-shadow: var(--shadow-soft);
-        }
-
-        .empty-icon {
-            font-size: 3rem;
-            margin-bottom: 16px;
-            opacity: 0.6;
-        }
-
-        .empty-title {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 8px;
-        }
-
-        .empty-text {
-            font-size: 0.95rem;
-            color: var(--text-secondary);
-        }
-
-        /* Responsive tweaks */
-        @media (max-width: 400px) {
-            body {
-                padding: 16px 12px 90px;
-            }
-
-            .task {
-                padding: 16px;
-            }
-
-            .task-days {
-                font-size: 2rem;
-            }
-
-            .task-countdown {
-                min-width: 65px;
-            }
-
-            .btn {
-                padding: 10px 12px;
-                font-size: 0.85rem;
-            }
-
-            .modal.active {
-                padding: 20px 12px;
-            }
-
-            .modal-content {
-                padding: 20px 16px;
-            }
-
-            .recurrence-row {
-                flex-direction: column;
-                gap: 8px;
-            }
-
-            .recurrence-row input {
-                width: 100%;
-            }
-
-            .date-row {
-                flex-direction: column;
-                gap: 12px;
-            }
-
-            .date-row .form-group {
-                margin-bottom: 0;
-            }
-        }
-
-        /* Ensure date inputs work well on iOS */
-        input[type="date"] {
-            -webkit-appearance: none;
-            appearance: none;
-            position: relative;
-        }
-
-        input[type="date"]::-webkit-date-and-time-value {
-            text-align: left;
-        }
-
-        /* WiFi Provisioning UI */
-        .wifi-setup {
-            max-width: 400px;
-            margin: 0 auto;
-        }
-
-        .wifi-card {
-            background: var(--bg-card);
-            border-radius: 20px;
-            padding: 20px;
-            box-shadow: var(--shadow-soft);
-            margin-bottom: 16px;
-        }
-
-        .wifi-card h3 {
-            font-size: 1rem;
-            font-weight: 700;
-            margin-bottom: 12px;
-            color: var(--text-primary);
-        }
-
-        .scan-btn {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-coral) 100%);
-            color: white;
-            font-size: 1rem;
-            font-weight: 600;
-            font-family: inherit;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .scan-btn:active { transform: scale(0.97); }
-        .scan-btn:disabled { opacity: 0.6; }
-
-        .network-list {
-            max-height: 240px;
-            overflow-y: auto;
-            margin-top: 12px;
-        }
-
-        .network-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.15s ease;
-            border: 2px solid transparent;
-        }
-        .network-item:hover { background: var(--bg-warm); }
-        .network-item.selected { border-color: var(--accent-teal); background: rgba(100, 216, 203, 0.08); }
-
-        .network-name {
-            font-weight: 600;
-            font-size: 0.95rem;
-            color: var(--text-primary);
-        }
-
-        .network-meta {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--text-secondary);
-            font-size: 0.8rem;
-        }
-
-        .signal-bars {
-            display: flex;
-            align-items: flex-end;
-            gap: 1px;
-            height: 14px;
-        }
-        .signal-bar {
-            width: 3px;
-            background: var(--text-light);
-            border-radius: 1px;
-        }
-        .signal-bar.active { background: var(--accent-teal); }
-
-        .wifi-password-card {
-            display: none;
-        }
-        .wifi-password-card.visible { display: block; }
-
-        .connect-btn {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--accent-teal) 0%, #52C9BA 100%);
-            color: white;
-            font-size: 1.1rem;
-            font-weight: 700;
-            font-family: inherit;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            margin-top: 12px;
-        }
-        .connect-btn:active { transform: scale(0.97); }
-        .connect-btn:disabled { opacity: 0.6; }
-
-        .wifi-status-msg {
-            text-align: center;
-            padding: 40px 20px;
-            background: var(--bg-card);
-            border-radius: 20px;
-            box-shadow: var(--shadow-soft);
-        }
-        .wifi-status-msg h2 { font-size: 1.4rem; margin-bottom: 8px; }
-        .wifi-status-msg p { color: var(--text-secondary); margin-top: 8px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Days Tracker</title>
+<style>
+:root {
+  --bg:#FEF9F3;--card:#FFF;--text:#4A4A4A;--text2:#8B8B8B;--text3:#B5B5B5;
+  --red:#FF7B7B;--red-bg:#FFF0F0;--orange:#FFB86B;--orange-bg:#FFF8F0;
+  --green:#7DD3A8;--green-bg:#F0FFF7;--blue:#A8B4FF;--blue-bg:#F5F6FF;
+  --teal:#64D8CB;--coral:#FF8A80;--purple:#B39DDB;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:20px 16px 100px}
+.header{text-align:center;margin-bottom:24px}
+h1{font-size:1.8rem;font-weight:800}
+.subtitle{font-size:.95rem;color:var(--text2);margin-top:4px}
+.tasks{display:flex;flex-direction:column;gap:14px;max-width:500px;margin:0 auto}
+.task{background:var(--card);border-radius:16px;padding:16px;border-top:4px solid var(--text3)}
+.task.overdue{background:var(--red-bg);border-top-color:var(--red)}
+.task.due-soon{background:var(--orange-bg);border-top-color:var(--orange)}
+.task.on-track{background:var(--green-bg);border-top-color:var(--green)}
+.task.chill{background:var(--blue-bg);border-top-color:var(--blue)}
+.task-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.task-info{flex:1;min-width:0}
+.task-name{font-weight:700;font-size:1.1rem;word-wrap:break-word}
+.task-due{font-size:.85rem;color:var(--text2);margin-top:4px}
+.task-countdown{text-align:center;min-width:70px}
+.task-days{font-size:2.2rem;font-weight:800;line-height:1}
+.task.overdue .task-days{color:var(--red)}
+.task.due-soon .task-days{color:var(--orange)}
+.task.on-track .task-days{color:var(--green)}
+.task.chill .task-days{color:var(--blue)}
+.task-label{font-size:.75rem;font-weight:600;color:var(--text2);text-transform:uppercase;margin-top:2px}
+.task-actions{margin-top:12px;display:flex;gap:8px}
+.btn{padding:10px 14px;border:none;border-radius:10px;font-size:.9rem;font-weight:600;font-family:inherit;cursor:pointer;flex:1}
+.btn-done{background:var(--teal);color:#fff}
+.btn-edit{background:var(--bg);color:var(--text);border:2px solid rgba(0,0,0,.08)}
+.btn-delete{background:rgba(255,123,123,.15);color:var(--red)}
+.add-btn{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:var(--coral);color:#fff;font-size:32px;font-weight:300;line-height:1;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;padding-bottom:3px}
+.modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(74,74,74,.5);padding:16px;z-index:100;overflow-y:auto}
+.modal.active{display:flex;align-items:flex-start;justify-content:center;padding-top:40px;padding-bottom:40px}
+.modal-content{background:var(--card);padding:20px;border-radius:20px;width:100%;max-width:380px;margin:auto}
+.modal h2{margin-bottom:16px;font-weight:800;font-size:1.3rem;text-align:center}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;margin-bottom:4px;font-size:.85rem;font-weight:600;color:var(--text2)}
+.form-group input,.form-group select{width:100%;padding:12px;border:2px solid rgba(0,0,0,.08);border-radius:10px;background:var(--bg);color:var(--text);font-size:16px;font-family:inherit;-webkit-appearance:none;appearance:none;box-sizing:border-box}
+.form-group select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238B8B8B' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px}
+.form-group input[type="date"]{min-height:48px}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:var(--teal);background:#fff}
+.form-hint{font-size:.75rem;color:var(--text3);margin-top:4px}
+.recurrence-row{display:flex;gap:10px}
+.recurrence-row input{width:80px;flex-shrink:0;text-align:center}
+.recurrence-row select{flex:1;min-width:0}
+.calculated-date{background:rgba(100,216,203,.15);border-color:var(--teal);font-weight:600}
+.modal-actions{display:flex;gap:10px;margin-top:20px}
+.btn-cancel{background:var(--bg);color:var(--text2);border:2px solid rgba(0,0,0,.06)}
+.btn-save{background:var(--teal);color:#fff}
+.empty{text-align:center;padding:50px 20px;color:var(--text2);background:var(--card);border-radius:20px}
+.empty-icon{font-size:3rem;margin-bottom:12px;opacity:.6}
+.empty-title{font-size:1.2rem;font-weight:700;color:var(--text);margin-bottom:8px}
+.empty-text{font-size:.95rem}
+input[type="date"]{-webkit-appearance:none;appearance:none}
+.wifi-setup{max-width:400px;margin:0 auto}
+.wifi-card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:14px}
+.wifi-card h3{font-size:1rem;font-weight:700;margin-bottom:10px}
+.scan-btn{width:100%;padding:12px;border:none;border-radius:10px;background:var(--purple);color:#fff;font-size:1rem;font-weight:600;font-family:inherit;cursor:pointer}
+.scan-btn:disabled{opacity:.6}
+.network-list{max-height:240px;overflow-y:auto;margin-top:10px}
+.network-item{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:10px;cursor:pointer;border:2px solid transparent}
+.network-item.selected{border-color:var(--teal);background:rgba(100,216,203,.08)}
+.network-name{font-weight:600;font-size:.95rem}
+.network-meta{display:flex;align-items:center;gap:6px;color:var(--text2);font-size:.8rem}
+.signal-bars{display:flex;align-items:flex-end;gap:1px;height:14px}
+.signal-bar{width:3px;background:var(--text3);border-radius:1px}
+.signal-bar.active{background:var(--teal)}
+.wifi-password-card{display:none}
+.wifi-password-card.visible{display:block}
+.connect-btn{width:100%;padding:14px;border:none;border-radius:10px;background:var(--teal);color:#fff;font-size:1.1rem;font-weight:700;font-family:inherit;cursor:pointer;margin-top:10px}
+.connect-btn:disabled{opacity:.6}
+.wifi-status-msg{text-align:center;padding:40px 20px;background:var(--card);border-radius:16px}
+.wifi-status-msg h2{font-size:1.4rem;margin-bottom:8px}
+.wifi-status-msg p{color:var(--text2);margin-top:8px}
+</style>
 </head>
 <body>
-    <!-- WiFi Provisioning UI (shown in AP mode) -->
-    <div id="wifi-setup" class="wifi-setup" style="display:none;">
-        <div class="header">
-            <h1>Days Tracker</h1>
-            <p class="subtitle">WiFi Setup</p>
-        </div>
-
-        <div class="wifi-card">
-            <h3>WiFi Networks</h3>
-            <button class="scan-btn" id="scan-btn" onclick="scanNetworks()">Scan for Networks</button>
-            <div class="network-list" id="network-list"></div>
-        </div>
-
-        <div class="wifi-card wifi-password-card" id="password-card">
-            <h3>Connect to: <span id="selected-ssid"></span></h3>
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" id="wifi-password" placeholder="Enter WiFi password">
-            </div>
-            <button class="connect-btn" id="connect-btn" onclick="connectToWifi()">Connect</button>
-        </div>
+<div id="wifi-setup" class="wifi-setup" style="display:none">
+  <div class="header"><h1>Days Tracker</h1><p class="subtitle">WiFi Setup</p></div>
+  <div class="wifi-card">
+    <h3>WiFi Networks</h3>
+    <button class="scan-btn" id="scan-btn" onclick="scanNetworks()">Scan for Networks</button>
+    <div class="network-list" id="network-list"></div>
+  </div>
+  <div class="wifi-card wifi-password-card" id="password-card">
+    <h3>Connect to: <span id="selected-ssid"></span></h3>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="wifi-password" placeholder="Enter WiFi password">
     </div>
-
-    <!-- Restart message (shown after connect) -->
-    <div id="wifi-restart-msg" style="display:none; max-width:400px; margin:60px auto; padding:0 16px;">
-        <div class="wifi-status-msg">
-            <h2 style="color: var(--accent-teal);">Connecting...</h2>
-            <p>Device is restarting and connecting to your WiFi.</p>
-            <p style="margin-top:16px; font-weight:600;">Once connected, open:</p>
-            <p style="color: var(--accent-teal); font-size: 1.1rem; font-weight: 700; margin-top: 4px;">http://daystracker.local</p>
-            <p style="margin-top:16px; font-size:0.85rem;">Make sure your phone is on the same WiFi network.</p>
-        </div>
+    <button class="connect-btn" id="connect-btn" onclick="connectToWifi()">Connect</button>
+  </div>
+</div>
+<div id="wifi-restart-msg" style="display:none;max-width:400px;margin:60px auto;padding:0 16px">
+  <div class="wifi-status-msg">
+    <h2 style="color:var(--teal)">Connecting...</h2>
+    <p>Device is restarting and connecting to your WiFi.</p>
+    <p style="margin-top:16px;font-weight:600">Once connected, scan the QR code on the device display.</p>
+    <p style="margin-top:16px;font-size:.85rem">Make sure your phone is on the same WiFi network.</p>
+  </div>
+</div>
+<div id="app-main" style="display:none">
+  <div class="header"><h1>Days Tracker</h1><p class="subtitle">Keep your home on track</p></div>
+  <div class="tasks" id="tasks"></div>
+  <button class="add-btn" onclick="showAddModal()">+</button>
+</div>
+<div class="modal" id="delete-modal">
+  <div class="modal-content" style="text-align:center">
+    <h2 style="color:var(--red)">Delete Task?</h2>
+    <p id="delete-task-name" style="margin:16px 0;color:var(--text2)"></p>
+    <p style="font-size:.9rem;color:var(--text3);margin-bottom:20px">This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="hideDeleteModal()">Cancel</button>
+      <button class="btn btn-delete" onclick="confirmDelete()" style="flex:1">Delete</button>
     </div>
-
-    <!-- Normal task management UI (shown in STA mode) -->
-    <div id="app-main" style="display:none;">
-        <div class="header">
-            <h1>Days Tracker</h1>
-            <p class="subtitle">Keep your home on track</p>
-        </div>
-
-        <div class="tasks" id="tasks"></div>
-
-        <button class="add-btn" onclick="showAddModal()">+</button>
+  </div>
+</div>
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <h2 id="modal-title">Add Task</h2>
+    <input type="hidden" id="task-id">
+    <div class="form-group">
+      <label>What needs doing?</label>
+      <input type="text" id="task-name" placeholder="Water the plants, change filters...">
     </div>
-
-    <!-- Delete Confirmation Modal -->
-    <div class="modal" id="delete-modal">
-        <div class="modal-content" style="text-align: center;">
-            <h2 style="color: var(--urgency-overdue);">Delete Task?</h2>
-            <p id="delete-task-name" style="margin: 16px 0; color: var(--text-secondary);"></p>
-            <p style="font-size: 0.9rem; color: var(--text-light); margin-bottom: 20px;">This cannot be undone.</p>
-            <div class="modal-actions">
-                <button class="btn btn-cancel" onclick="hideDeleteModal()">Cancel</button>
-                <button class="btn btn-delete" onclick="confirmDelete()" style="flex: 1;">Delete</button>
-            </div>
-        </div>
+    <div class="form-group">
+      <label>Repeat every</label>
+      <div class="recurrence-row">
+        <input type="number" id="recurrence-value" value="7" min="1">
+        <select id="recurrence-type">
+          <option value="daily">Days</option>
+          <option value="weekly">Weeks</option>
+          <option value="monthly">Months</option>
+        </select>
+      </div>
     </div>
-
-    <div class="modal" id="modal">
-        <div class="modal-content">
-            <h2 id="modal-title">Add Task</h2>
-            <input type="hidden" id="task-id">
-            <div class="form-group">
-                <label>What needs doing?</label>
-                <input type="text" id="task-name" placeholder="Water the plants, change filters...">
-            </div>
-            <div class="form-group">
-                <label>Repeat every</label>
-                <div class="recurrence-row">
-                    <input type="number" id="recurrence-value" value="7" min="1">
-                    <select id="recurrence-type">
-                        <option value="daily">Days</option>
-                        <option value="weekly">Weeks</option>
-                        <option value="monthly">Months</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>When did you start? (or last do it)</label>
-                <input type="date" id="start-date">
-                <div class="form-hint">Set this to backdate when the cycle started</div>
-            </div>
-            <div class="form-group">
-                <label>Next due date</label>
-                <input type="date" id="next-due" class="calculated-date">
-                <div class="form-hint" id="due-hint">Auto-calculated from start date + interval</div>
-            </div>
-            <div class="modal-actions">
-                <button class="btn btn-cancel" onclick="hideModal()">Cancel</button>
-                <button class="btn btn-save" onclick="saveTask()">Save</button>
-            </div>
-        </div>
+    <div class="form-group">
+      <label>When did you start? (or last do it)</label>
+      <input type="date" id="start-date">
+      <div class="form-hint">Set this to backdate when the cycle started</div>
     </div>
-
-    <script>
-        const API = '/api';
-        let tasks = [];
-
-        async function loadTasks() {
-            const res = await fetch(`${API}/tasks`);
-            tasks = await res.json();
-            renderTasks();
-        }
-
-        function renderTasks() {
-            const el = document.getElementById('tasks');
-            if (tasks.length === 0) {
-                el.innerHTML = `
-                    <div class="empty">
-                        <div class="empty-icon">+</div>
-                        <div class="empty-title">No tasks yet</div>
-                        <div class="empty-text">Tap the button below to add your first task</div>
-                    </div>
-                `;
-                return;
-            }
-
-            el.innerHTML = tasks.map(t => {
-                let urgency, label;
-                const days = Math.abs(t.daysUntilDue);
-
-                if (t.daysUntilDue < 0) {
-                    urgency = 'overdue';
-                    label = days === 1 ? 'day overdue' : 'days overdue';
-                } else if (t.daysUntilDue === 0) {
-                    urgency = 'due-soon';
-                    label = 'due today';
-                } else if (t.daysUntilDue <= 3) {
-                    urgency = 'due-soon';
-                    label = t.daysUntilDue === 1 ? 'day left' : 'days left';
-                } else if (t.daysUntilDue <= 7) {
-                    urgency = 'on-track';
-                    label = 'days left';
-                } else {
-                    urgency = 'chill';
-                    label = 'days left';
-                }
-
-                const displayDays = t.daysUntilDue === 0 ? '!' : days;
-
-                return `
-                    <div class="task ${urgency}">
-                        <div class="task-header">
-                            <div class="task-info">
-                                <div class="task-name">${escapeHtml(t.name)}</div>
-                                <div class="task-due">${formatDate(t.nextDueDate)}</div>
-                            </div>
-                            <div class="task-countdown">
-                                <div class="task-days">${displayDays}</div>
-                                <div class="task-label">${label}</div>
-                            </div>
-                        </div>
-                        <div class="task-actions">
-                            <button class="btn btn-done" onclick="completeTask(${t.id})">Done</button>
-                            <button class="btn btn-edit" onclick="editTask(${t.id})">Edit</button>
-                            <button class="btn btn-delete" onclick="deleteTask(${t.id})">Delete</button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        function formatDate(dateStr) {
-            const date = new Date(dateStr + 'T00:00:00');
-            const options = { weekday: 'short', month: 'short', day: 'numeric' };
-            return date.toLocaleDateString('en-US', options);
-        }
-
-        // Calculate next due date from start date + recurrence
-        function calculateNextDue() {
-            const startDate = document.getElementById('start-date').value;
-            const recurrenceValue = parseInt(document.getElementById('recurrence-value').value) || 0;
-            const recurrenceType = document.getElementById('recurrence-type').value;
-
-            if (!startDate || recurrenceValue <= 0) return;
-
-            const start = new Date(startDate + 'T00:00:00');
-            let nextDue = new Date(start);
-
-            switch (recurrenceType) {
-                case 'daily':
-                    nextDue.setDate(start.getDate() + recurrenceValue);
-                    break;
-                case 'weekly':
-                    nextDue.setDate(start.getDate() + (recurrenceValue * 7));
-                    break;
-                case 'monthly':
-                    nextDue.setMonth(start.getMonth() + recurrenceValue);
-                    break;
-            }
-
-            // Format as YYYY-MM-DD for input
-            const nextDueStr = nextDue.toISOString().split('T')[0];
-            document.getElementById('next-due').value = nextDueStr;
-
-            // Update hint
-            const daysUntil = Math.ceil((nextDue - new Date()) / (1000 * 60 * 60 * 24));
-            const hint = document.getElementById('due-hint');
-            if (daysUntil < 0) {
-                hint.textContent = `${Math.abs(daysUntil)} days overdue`;
-                hint.style.color = 'var(--urgency-overdue)';
-            } else if (daysUntil === 0) {
-                hint.textContent = 'Due today!';
-                hint.style.color = 'var(--urgency-soon)';
-            } else {
-                hint.textContent = `Due in ${daysUntil} days`;
-                hint.style.color = 'var(--accent-teal)';
-            }
-        }
-
-        // Calculate start date from next due date (reverse calculation)
-        function calculateStartDate() {
-            const nextDue = document.getElementById('next-due').value;
-            const recurrenceValue = parseInt(document.getElementById('recurrence-value').value) || 0;
-            const recurrenceType = document.getElementById('recurrence-type').value;
-
-            if (!nextDue || recurrenceValue <= 0) return;
-
-            const due = new Date(nextDue + 'T00:00:00');
-            let start = new Date(due);
-
-            switch (recurrenceType) {
-                case 'daily':
-                    start.setDate(due.getDate() - recurrenceValue);
-                    break;
-                case 'weekly':
-                    start.setDate(due.getDate() - (recurrenceValue * 7));
-                    break;
-                case 'monthly':
-                    start.setMonth(due.getMonth() - recurrenceValue);
-                    break;
-            }
-
-            document.getElementById('start-date').value = start.toISOString().split('T')[0];
-        }
-
-        async function completeTask(id) {
-            await fetch(`${API}/tasks/${id}/complete`, { method: 'POST' });
-            loadTasks();
-        }
-
-        let deleteTaskId = null;
-
-        function deleteTask(id) {
-            const task = tasks.find(t => t.id === id);
-            if (!task) return;
-            deleteTaskId = id;
-            document.getElementById('delete-task-name').textContent = `"${task.name}"`;
-            document.getElementById('delete-modal').classList.add('active');
-        }
-
-        function hideDeleteModal() {
-            document.getElementById('delete-modal').classList.remove('active');
-            deleteTaskId = null;
-        }
-
-        async function confirmDelete() {
-            if (deleteTaskId) {
-                await fetch(`${API}/tasks/${deleteTaskId}`, { method: 'DELETE' });
-                hideDeleteModal();
-                loadTasks();
-            }
-        }
-
-        function showAddModal() {
-            document.getElementById('modal-title').textContent = 'Add Task';
-            document.getElementById('task-id').value = '';
-            document.getElementById('task-name').value = '';
-            document.getElementById('recurrence-value').value = '7';
-            document.getElementById('recurrence-type').value = 'daily';
-
-            // Set start date to today
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('start-date').value = today;
-
-            // Calculate next due from today + 7 days
-            calculateNextDue();
-
-            document.getElementById('modal').classList.add('active');
-        }
-
-        function editTask(id) {
-            const task = tasks.find(t => t.id === id);
-            if (!task) return;
-            document.getElementById('modal-title').textContent = 'Edit Task';
-            document.getElementById('task-id').value = id;
-            document.getElementById('task-name').value = task.name;
-            document.getElementById('recurrence-value').value = task.recurrenceValue;
-            document.getElementById('recurrence-type').value = task.recurrenceType;
-            document.getElementById('next-due').value = task.nextDueDate;
-
-            // Calculate what the start date would have been
-            calculateStartDate();
-
-            // Update the hint
-            const hint = document.getElementById('due-hint');
-            const daysUntil = task.daysUntilDue;
-            if (daysUntil < 0) {
-                hint.textContent = `${Math.abs(daysUntil)} days overdue`;
-                hint.style.color = 'var(--urgency-overdue)';
-            } else if (daysUntil === 0) {
-                hint.textContent = 'Due today!';
-                hint.style.color = 'var(--urgency-soon)';
-            } else {
-                hint.textContent = `Due in ${daysUntil} days`;
-                hint.style.color = 'var(--accent-teal)';
-            }
-
-            document.getElementById('modal').classList.add('active');
-        }
-
-        function hideModal() {
-            document.getElementById('modal').classList.remove('active');
-        }
-
-        async function saveTask() {
-            const id = document.getElementById('task-id').value;
-            const data = {
-                name: document.getElementById('task-name').value,
-                recurrenceType: document.getElementById('recurrence-type').value,
-                recurrenceValue: parseInt(document.getElementById('recurrence-value').value),
-                nextDueDate: document.getElementById('next-due').value
-            };
-
-            if (!data.name) {
-                alert('Please enter a task name');
-                return;
-            }
-
-            if (id) {
-                await fetch(`${API}/tasks/${id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-            } else {
-                await fetch(`${API}/tasks`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-            }
-
-            hideModal();
-            loadTasks();
-        }
-
-        // Event listeners for auto-calculation
-        document.getElementById('start-date').addEventListener('change', calculateNextDue);
-        document.getElementById('recurrence-value').addEventListener('input', calculateNextDue);
-        document.getElementById('recurrence-type').addEventListener('change', calculateNextDue);
-        document.getElementById('next-due').addEventListener('change', function() {
-            // When user manually changes next due, update the hint but don't change start date
-            const nextDue = new Date(this.value + 'T00:00:00');
-            const daysUntil = Math.ceil((nextDue - new Date()) / (1000 * 60 * 60 * 24));
-            const hint = document.getElementById('due-hint');
-            if (daysUntil < 0) {
-                hint.textContent = `${Math.abs(daysUntil)} days overdue`;
-                hint.style.color = 'var(--urgency-overdue)';
-            } else if (daysUntil === 0) {
-                hint.textContent = 'Due today!';
-                hint.style.color = 'var(--urgency-soon)';
-            } else {
-                hint.textContent = `Due in ${daysUntil} days`;
-                hint.style.color = 'var(--accent-teal)';
-            }
-        });
-
-        // Close modals when clicking outside
-        document.getElementById('modal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                hideModal();
-            }
-        });
-
-        document.getElementById('delete-modal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                hideDeleteModal();
-            }
-        });
-
-        // === WiFi Provisioning Functions ===
-        let selectedSSID = '';
-
-        async function scanNetworks() {
-            const btn = document.getElementById('scan-btn');
-            btn.disabled = true;
-            btn.textContent = 'Scanning...';
-
-            try {
-                const res = await fetch('/api/wifi/scan');
-                const networks = await res.json();
-                renderNetworks(networks);
-            } catch (e) {
-                console.log('Scan failed:', e);
-            }
-
-            btn.disabled = false;
-            btn.textContent = 'Scan Again';
-        }
-
-        function renderNetworks(networks) {
-            const el = document.getElementById('network-list');
-            el.textContent = '';
-
-            if (!networks.length) {
-                const p = document.createElement('p');
-                p.style.cssText = 'text-align:center;color:var(--text-secondary);padding:12px;';
-                p.textContent = 'No networks found. Try again.';
-                el.appendChild(p);
-                return;
-            }
-
-            networks.forEach(n => {
-                const item = document.createElement('div');
-                item.className = 'network-item';
-                item.onclick = () => selectNetwork(n.ssid, n.auth);
-
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'network-name';
-                nameSpan.textContent = n.ssid;
-
-                const metaSpan = document.createElement('span');
-                metaSpan.className = 'network-meta';
-
-                if (n.auth !== 'open') {
-                    const lock = document.createElement('span');
-                    lock.textContent = '\u{1F512}';
-                    metaSpan.appendChild(lock);
-                }
-
-                const barsDiv = document.createElement('span');
-                barsDiv.className = 'signal-bars';
-                const strength = n.rssi > -50 ? 4 : n.rssi > -60 ? 3 : n.rssi > -70 ? 2 : 1;
-                [4,8,12,16].forEach((h, i) => {
-                    const bar = document.createElement('span');
-                    bar.className = 'signal-bar' + (i < strength ? ' active' : '');
-                    bar.style.height = h + 'px';
-                    barsDiv.appendChild(bar);
-                });
-                metaSpan.appendChild(barsDiv);
-
-                item.appendChild(nameSpan);
-                item.appendChild(metaSpan);
-                el.appendChild(item);
-            });
-        }
-
-        function selectNetwork(ssid, auth) {
-            selectedSSID = ssid;
-            document.getElementById('selected-ssid').textContent = ssid;
-            document.getElementById('wifi-password').value = '';
-            document.getElementById('password-card').classList.add('visible');
-
-            document.querySelectorAll('.network-item').forEach(el => {
-                el.classList.toggle('selected', el.querySelector('.network-name').textContent === ssid);
-            });
-
-            if (auth === 'open') {
-                document.getElementById('wifi-password').placeholder = 'No password needed';
-            } else {
-                document.getElementById('wifi-password').placeholder = 'Enter WiFi password';
-            }
-        }
-
-        async function connectToWifi() {
-            if (!selectedSSID) return;
-
-            const btn = document.getElementById('connect-btn');
-            btn.disabled = true;
-            btn.textContent = 'Connecting...';
-
-            try {
-                const res = await fetch('/api/wifi/connect', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        ssid: selectedSSID,
-                        password: document.getElementById('wifi-password').value
-                    })
-                });
-
-                if (res.ok) {
-                    document.getElementById('wifi-setup').style.display = 'none';
-                    document.getElementById('wifi-restart-msg').style.display = 'block';
-                } else {
-                    btn.disabled = false;
-                    btn.textContent = 'Connect';
-                    alert('Failed to save credentials. Try again.');
-                }
-            } catch (e) {
-                // Device is restarting - show success message
-                document.getElementById('wifi-setup').style.display = 'none';
-                document.getElementById('wifi-restart-msg').style.display = 'block';
-            }
-        }
-
-        // === Mode Detection + Init ===
-        async function syncTime() {
-            try {
-                await fetch('/api/time', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ timestamp: Date.now() })
-                });
-            } catch (e) {
-                console.log('Time sync failed:', e);
-            }
-        }
-
-        async function init() {
-            try {
-                const res = await fetch('/api/wifi/status');
-                const status = await res.json();
-
-                if (status.mode === 'ap') {
-                    document.getElementById('wifi-setup').style.display = 'block';
-                    document.getElementById('app-main').style.display = 'none';
-                } else {
-                    document.getElementById('wifi-setup').style.display = 'none';
-                    document.getElementById('app-main').style.display = 'block';
-                    await syncTime();
-                    loadTasks();
-                }
-            } catch (e) {
-                document.getElementById('app-main').style.display = 'block';
-                await syncTime();
-                loadTasks();
-            }
-        }
-
-        init();
-    </script>
+    <div class="form-group">
+      <label>Next due date</label>
+      <input type="date" id="next-due" class="calculated-date">
+      <div class="form-hint" id="due-hint">Auto-calculated from start date + interval</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="hideModal()">Cancel</button>
+      <button class="btn btn-save" onclick="saveTask()">Save</button>
+    </div>
+  </div>
+</div>
+<script>
+const API='/api';
+let tasks=[];
+
+async function loadTasks(){
+  const res=await fetch(API+'/tasks');
+  tasks=await res.json();
+  renderTasks();
+}
+
+function renderTasks(){
+  const el=document.getElementById('tasks');
+  if(!tasks.length){
+    el.textContent='';
+    const empty=document.createElement('div');empty.className='empty';
+    const icon=document.createElement('div');icon.className='empty-icon';icon.textContent='+';
+    const title=document.createElement('div');title.className='empty-title';title.textContent='No tasks yet';
+    const txt=document.createElement('div');txt.className='empty-text';txt.textContent='Tap the button below to add your first task';
+    empty.appendChild(icon);empty.appendChild(title);empty.appendChild(txt);el.appendChild(empty);
+    return;
+  }
+  el.textContent='';
+  tasks.forEach(function(t){
+    let urgency,label;
+    const days=Math.abs(t.daysUntilDue);
+    if(t.daysUntilDue<0){urgency='overdue';label=days===1?'day overdue':'days overdue';}
+    else if(t.daysUntilDue===0){urgency='due-soon';label='due today';}
+    else if(t.daysUntilDue<=3){urgency='due-soon';label=t.daysUntilDue===1?'day left':'days left';}
+    else if(t.daysUntilDue<=7){urgency='on-track';label='days left';}
+    else{urgency='chill';label='days left';}
+    const dd=t.daysUntilDue===0?'!':String(days);
+
+    const card=document.createElement('div');card.className='task '+urgency;
+    const header=document.createElement('div');header.className='task-header';
+    const info=document.createElement('div');info.className='task-info';
+    const name=document.createElement('div');name.className='task-name';name.textContent=t.name;
+    const due=document.createElement('div');due.className='task-due';due.textContent=formatDate(t.nextDueDate);
+    info.appendChild(name);info.appendChild(due);
+    const countdown=document.createElement('div');countdown.className='task-countdown';
+    const daysEl=document.createElement('div');daysEl.className='task-days';daysEl.textContent=dd;
+    const labelEl=document.createElement('div');labelEl.className='task-label';labelEl.textContent=label;
+    countdown.appendChild(daysEl);countdown.appendChild(labelEl);
+    header.appendChild(info);header.appendChild(countdown);card.appendChild(header);
+
+    const actions=document.createElement('div');actions.className='task-actions';
+    const btnDone=document.createElement('button');btnDone.className='btn btn-done';btnDone.textContent='Done';btnDone.onclick=function(){completeTask(t.id);};
+    const btnEdit=document.createElement('button');btnEdit.className='btn btn-edit';btnEdit.textContent='Edit';btnEdit.onclick=function(){editTask(t.id);};
+    const btnDel=document.createElement('button');btnDel.className='btn btn-delete';btnDel.textContent='Delete';btnDel.onclick=function(){deleteTask(t.id);};
+    actions.appendChild(btnDone);actions.appendChild(btnEdit);actions.appendChild(btnDel);
+    card.appendChild(actions);el.appendChild(card);
+  });
+}
+
+function formatDate(s){const d=new Date(s+'T00:00:00');return d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});}
+
+function calculateNextDue(){
+  const sd=document.getElementById('start-date').value;
+  const rv=parseInt(document.getElementById('recurrence-value').value)||0;
+  const rt=document.getElementById('recurrence-type').value;
+  if(!sd||rv<=0)return;
+  const s=new Date(sd+'T00:00:00'),n=new Date(s);
+  if(rt==='daily')n.setDate(s.getDate()+rv);
+  else if(rt==='weekly')n.setDate(s.getDate()+rv*7);
+  else if(rt==='monthly')n.setMonth(s.getMonth()+rv);
+  document.getElementById('next-due').value=n.toISOString().split('T')[0];
+  const du=Math.ceil((n-new Date())/(864e5));
+  const h=document.getElementById('due-hint');
+  if(du<0){h.textContent=Math.abs(du)+' days overdue';h.style.color='var(--red)';}
+  else if(du===0){h.textContent='Due today!';h.style.color='var(--orange)';}
+  else{h.textContent='Due in '+du+' days';h.style.color='var(--teal)';}
+}
+
+function calculateStartDate(){
+  const nd=document.getElementById('next-due').value;
+  const rv=parseInt(document.getElementById('recurrence-value').value)||0;
+  const rt=document.getElementById('recurrence-type').value;
+  if(!nd||rv<=0)return;
+  const d=new Date(nd+'T00:00:00'),s=new Date(d);
+  if(rt==='daily')s.setDate(d.getDate()-rv);
+  else if(rt==='weekly')s.setDate(d.getDate()-rv*7);
+  else if(rt==='monthly')s.setMonth(d.getMonth()-rv);
+  document.getElementById('start-date').value=s.toISOString().split('T')[0];
+}
+
+async function completeTask(id){await fetch(API+'/tasks/'+id+'/complete',{method:'POST'});loadTasks();}
+
+let deleteTaskId=null;
+function deleteTask(id){
+  const t=tasks.find(function(x){return x.id===id;});if(!t)return;
+  deleteTaskId=id;
+  document.getElementById('delete-task-name').textContent='"'+t.name+'"';
+  document.getElementById('delete-modal').classList.add('active');
+}
+function hideDeleteModal(){document.getElementById('delete-modal').classList.remove('active');deleteTaskId=null;}
+async function confirmDelete(){if(deleteTaskId){await fetch(API+'/tasks/'+deleteTaskId,{method:'DELETE'});hideDeleteModal();loadTasks();}}
+
+function showAddModal(){
+  document.getElementById('modal-title').textContent='Add Task';
+  document.getElementById('task-id').value='';
+  document.getElementById('task-name').value='';
+  document.getElementById('recurrence-value').value='7';
+  document.getElementById('recurrence-type').value='daily';
+  document.getElementById('start-date').value=new Date().toISOString().split('T')[0];
+  calculateNextDue();
+  document.getElementById('modal').classList.add('active');
+}
+
+function editTask(id){
+  const t=tasks.find(function(x){return x.id===id;});if(!t)return;
+  document.getElementById('modal-title').textContent='Edit Task';
+  document.getElementById('task-id').value=id;
+  document.getElementById('task-name').value=t.name;
+  document.getElementById('recurrence-value').value=t.recurrenceValue;
+  document.getElementById('recurrence-type').value=t.recurrenceType;
+  document.getElementById('next-due').value=t.nextDueDate;
+  calculateStartDate();
+  const h=document.getElementById('due-hint'),d=t.daysUntilDue;
+  if(d<0){h.textContent=Math.abs(d)+' days overdue';h.style.color='var(--red)';}
+  else if(d===0){h.textContent='Due today!';h.style.color='var(--orange)';}
+  else{h.textContent='Due in '+d+' days';h.style.color='var(--teal)';}
+  document.getElementById('modal').classList.add('active');
+}
+
+function hideModal(){document.getElementById('modal').classList.remove('active');}
+
+async function saveTask(){
+  const id=document.getElementById('task-id').value;
+  const data={name:document.getElementById('task-name').value,recurrenceType:document.getElementById('recurrence-type').value,recurrenceValue:parseInt(document.getElementById('recurrence-value').value),nextDueDate:document.getElementById('next-due').value};
+  if(!data.name){alert('Please enter a task name');return;}
+  if(id){await fetch(API+'/tasks/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
+  else{await fetch(API+'/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
+  hideModal();loadTasks();
+}
+
+document.getElementById('start-date').addEventListener('change',calculateNextDue);
+document.getElementById('recurrence-value').addEventListener('input',calculateNextDue);
+document.getElementById('recurrence-type').addEventListener('change',calculateNextDue);
+document.getElementById('next-due').addEventListener('change',function(){
+  const n=new Date(this.value+'T00:00:00'),du=Math.ceil((n-new Date())/(864e5)),h=document.getElementById('due-hint');
+  if(du<0){h.textContent=Math.abs(du)+' days overdue';h.style.color='var(--red)';}
+  else if(du===0){h.textContent='Due today!';h.style.color='var(--orange)';}
+  else{h.textContent='Due in '+du+' days';h.style.color='var(--teal)';}
+});
+document.getElementById('modal').addEventListener('click',function(e){if(e.target===this)hideModal();});
+document.getElementById('delete-modal').addEventListener('click',function(e){if(e.target===this)hideDeleteModal();});
+
+let selectedSSID='';
+async function scanNetworks(){
+  const b=document.getElementById('scan-btn');b.disabled=true;b.textContent='Scanning...';
+  try{const r=await fetch('/api/wifi/scan');renderNetworks(await r.json());}catch(e){}
+  b.disabled=false;b.textContent='Scan Again';
+}
+
+function renderNetworks(nets){
+  const el=document.getElementById('network-list');el.textContent='';
+  if(!nets.length){const p=document.createElement('p');p.style.cssText='text-align:center;color:var(--text2);padding:12px';p.textContent='No networks found. Try again.';el.appendChild(p);return;}
+  nets.forEach(function(n){
+    const item=document.createElement('div');item.className='network-item';item.onclick=function(){selectNetwork(n.ssid,n.auth);};
+    const nm=document.createElement('span');nm.className='network-name';nm.textContent=n.ssid;
+    const meta=document.createElement('span');meta.className='network-meta';
+    if(n.auth!=='open'){const lk=document.createElement('span');lk.textContent='\u{1F512}';meta.appendChild(lk);}
+    const bars=document.createElement('span');bars.className='signal-bars';
+    const str=n.rssi>-50?4:n.rssi>-60?3:n.rssi>-70?2:1;
+    [4,8,12,16].forEach(function(h,i){const b=document.createElement('span');b.className='signal-bar'+(i<str?' active':'');b.style.height=h+'px';bars.appendChild(b);});
+    meta.appendChild(bars);item.appendChild(nm);item.appendChild(meta);el.appendChild(item);
+  });
+}
+
+function selectNetwork(ssid,auth){
+  selectedSSID=ssid;
+  document.getElementById('selected-ssid').textContent=ssid;
+  document.getElementById('wifi-password').value='';
+  document.getElementById('password-card').classList.add('visible');
+  document.querySelectorAll('.network-item').forEach(function(el){el.classList.toggle('selected',el.querySelector('.network-name').textContent===ssid);});
+  document.getElementById('wifi-password').placeholder=auth==='open'?'No password needed':'Enter WiFi password';
+}
+
+async function connectToWifi(){
+  if(!selectedSSID)return;
+  const b=document.getElementById('connect-btn');b.disabled=true;b.textContent='Connecting...';
+  try{
+    const r=await fetch('/api/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:selectedSSID,password:document.getElementById('wifi-password').value})});
+    if(r.ok){document.getElementById('wifi-setup').style.display='none';document.getElementById('wifi-restart-msg').style.display='block';}
+    else{b.disabled=false;b.textContent='Connect';alert('Failed to save credentials. Try again.');}
+  }catch(e){document.getElementById('wifi-setup').style.display='none';document.getElementById('wifi-restart-msg').style.display='block';}
+}
+
+async function syncTime(){try{await fetch('/api/time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({timestamp:Date.now()})});}catch(e){}}
+
+async function init(){
+  try{
+    const r=await fetch('/api/wifi/status'),s=await r.json();
+    if(s.mode==='ap'){document.getElementById('wifi-setup').style.display='block';}
+    else{document.getElementById('app-main').style.display='block';await syncTime();loadTasks();}
+  }catch(e){document.getElementById('app-main').style.display='block';await syncTime();loadTasks();}
+}
+init();
+</script>
 </body>
 </html>

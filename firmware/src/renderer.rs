@@ -472,20 +472,14 @@ impl Renderer {
     pub fn render_empty(fb: &mut FrameBuffer, wifi_mode: &WiFiMode) {
         Self::clear(fb);
 
-        Self::draw_text_centered(fb, 30, "No tasks", theme::TEXT_PRIMARY, 2);
+        Self::draw_text_centered(fb, 35, "No tasks yet", theme::TEXT_PRIMARY, 2);
+        Self::draw_text_centered(fb, 65, "Add via web UI", theme::TEXT_MUTED, 1);
 
-        match wifi_mode {
-            WiFiMode::Station { ip, .. } => {
-                let url = crate::wifi::web_url_from_ip(*ip);
-                Self::draw_text_centered(fb, 55, "Add tasks at:", theme::TEXT_MUTED, 1);
-                Self::draw_text_centered(fb, 68, &url, theme::ACCENT, 1);
-            }
-            WiFiMode::AccessPoint { .. } => {
-                Self::draw_text_centered(fb, 60, "Add tasks via web", theme::TEXT_MUTED, 1);
-            }
-        }
-
-        Self::draw_text_centered(fb, fb.height() - 10, "press for QR code", theme::TEXT_MUTED, 1);
+        let hint = match wifi_mode {
+            WiFiMode::Station { .. } => "press for QR code",
+            WiFiMode::AccessPoint { .. } => "press for QR code",
+        };
+        Self::draw_text_centered(fb, fb.height() - 10, hint, theme::TEXT_MUTED, 1);
     }
 
     /// Render dashboard with metrics and navigation
@@ -677,10 +671,10 @@ impl Renderer {
         // Choose QR data and header based on mode
         let (qr_data, header) = match wifi_mode {
             WiFiMode::AccessPoint { .. } => {
-                (crate::wifi::wifi_qr_string(), "Scan to connect")
+                (crate::wifi::wifi_qr_string(), "Scan to join WiFi")
             }
             WiFiMode::Station { .. } => {
-                (String::from(url), "Scan to open")
+                (String::from(url), "Scan to manage tasks")
             }
         };
 
@@ -688,19 +682,20 @@ impl Renderer {
 
         if let Ok(code) = QrCode::new(qr_data.as_bytes()) {
             let qr_size = code.width();
-            let available = 86u32;
+            let available = 100u32;
             let pixel_size = (available / qr_size as u32).max(1);
             let qr_pixels = qr_size as u32 * pixel_size;
 
             let start_x = (w - qr_pixels) / 2;
-            let start_y: u32 = 14;
+            let start_y: u32 = 12;
 
-            // White background for QR
+            // White background for QR with quiet zone
+            let pad: u32 = 4;
             fb.fill_rect(
-                start_x.saturating_sub(4),
-                start_y.saturating_sub(4),
-                qr_pixels + 8,
-                qr_pixels + 8,
+                start_x.saturating_sub(pad),
+                start_y.saturating_sub(pad),
+                qr_pixels + pad * 2,
+                qr_pixels + pad * 2,
                 theme::TEXT_PRIMARY,
             );
 
@@ -719,12 +714,14 @@ impl Renderer {
                 }
             }
 
-            // Show URL below QR code
-            let url_y = start_y + qr_pixels + 10;
-            Self::draw_text_centered(fb, url_y, url, theme::ACCENT, 1);
+            // Show URL below QR code if it fits
+            let url_y = start_y + qr_pixels + pad + 2;
+            if url_y + 10 < h - 10 {
+                Self::draw_text_centered(fb, url_y, url, theme::ACCENT, 1);
+            }
         }
 
-        Self::draw_text_centered(fb, h - 10, "long press: back", theme::TEXT_MUTED, 1);
+        Self::draw_text_centered(fb, h - 10, "press: back", theme::TEXT_MUTED, 1);
     }
 
     /// Render "connecting" splash screen

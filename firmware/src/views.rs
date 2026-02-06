@@ -451,7 +451,11 @@ impl ViewNavigator {
                 ctx.state = ViewState::QrCode;
                 return Some("show_qr");
             }
-            ViewState::QrCode | ViewState::Completing => {}
+            ViewState::QrCode => {
+                ctx.state = ViewState::Dashboard;
+                return Some("go_dashboard");
+            }
+            ViewState::Completing => {}
         }
 
         None
@@ -471,7 +475,8 @@ impl ViewNavigator {
                 return Some("go_dashboard");
             }
             ViewState::QrCode => {
-                ctx.state = ViewState::Settings;
+                ctx.state = ViewState::Dashboard;
+                return Some("go_dashboard");
             }
             ViewState::Settings => {
                 ctx.state = ViewState::Dashboard;

@@ -13,7 +13,7 @@ use std::thread;
 pub fn start(ip: [u8; 4]) {
     thread::Builder::new()
         .name("dns".into())
-        .stack_size(4096)
+        .stack_size(8192)
         .spawn(move || dns_loop(ip))
         .expect("DNS thread spawn failed");
 }
@@ -46,19 +46,37 @@ fn dns_loop(ip: [u8; 4]) {
     }
 }
 
+/// Find where the question section ends in a DNS query.
+/// Returns the byte offset after QNAME + QTYPE + QCLASS.
+fn find_question_end(query: &[u8]) -> usize {
+    let mut pos = 12; // Skip 12-byte header
+    // Skip QNAME (sequence of length-prefixed labels, terminated by 0)
+    while pos < query.len() {
+        let label_len = query[pos] as usize;
+        if label_len == 0 {
+            pos += 1; // Skip null terminator
+            break;
+        }
+        pos += 1 + label_len; // Skip length byte + label data
+    }
+    pos += 4; // Skip QTYPE (2 bytes) + QCLASS (2 bytes)
+    pos.min(query.len())
+}
+
 /// Build a DNS A-record response pointing all queries to our IP
 fn build_response(query: &[u8], ip: &[u8; 4]) -> Vec<u8> {
-    let mut resp = Vec::with_capacity(query.len() + 16);
+    let question_end = find_question_end(query);
+    let mut resp = Vec::with_capacity(question_end + 28);
 
     // Header
     resp.extend_from_slice(&query[..2]); // Transaction ID
     resp.extend_from_slice(&[0x81, 0x80]); // Flags: response, authoritative, no error
-    resp.extend_from_slice(&query[4..6]); // Questions count
+    resp.extend_from_slice(&[0x00, 0x01]); // Questions: 1
     resp.extend_from_slice(&[0x00, 0x01]); // Answers: 1
     resp.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // Authority + Additional: 0
 
-    // Question section (copy from query)
-    resp.extend_from_slice(&query[12..]);
+    // Question section (only the first question, properly parsed)
+    resp.extend_from_slice(&query[12..question_end]);
 
     // Answer: pointer to name in question, A record, IN class, TTL 60, our IP
     resp.extend_from_slice(&[0xC0, 0x0C]); // Name pointer to offset 12
