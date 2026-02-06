@@ -14,6 +14,7 @@ use crate::display::FrameBuffer;
 use crate::fonts::{self, BIG_NUM_HEIGHT, BIG_NUM_WIDTH, FONT_WIDTH};
 use crate::models::{HistoryDisplayEntry, TaskDisplayData};
 use crate::theme;
+use crate::wifi::WiFiMode;
 
 /// Renderer handles all UI drawing operations
 pub struct Renderer;
@@ -415,10 +416,10 @@ impl Renderer {
         Self::draw_text_centered(fb, 4, "Settings", theme::TEXT_PRIMARY, 1);
         fb.hline(10, 16, fb.width() - 20, theme::CARD_BORDER);
 
-        let start_y: u32 = 30;
-        let item_height: u32 = 18;
+        let start_y: u32 = 24;
+        let item_height: u32 = 16;
 
-        // Manage Tasks
+        // Manage Tasks (index 0)
         let manage_y = start_y;
         let manage_selected = selected == 0;
         if manage_selected {
@@ -430,7 +431,7 @@ impl Renderer {
         let arrow_x = fb.width() - Self::text_width(">", 1) - 8;
         Self::draw_text(fb, arrow_x, manage_y, ">", theme::TEXT_MUTED, 1);
 
-        // Screen Timeout
+        // Screen Timeout (index 1)
         let timeout_y = start_y + item_height;
         let timeout_selected = selected == 1;
         if timeout_selected {
@@ -444,9 +445,19 @@ impl Renderer {
         let toggle_x = fb.width() - Self::text_width(toggle_text, 1) - 8;
         Self::draw_text(fb, toggle_x, timeout_y, toggle_text, toggle_color, 1);
 
-        // Back
-        let back_y = start_y + (2 * item_height);
-        let back_selected = selected == 2;
+        // Reset WiFi (index 2)
+        let wifi_y = start_y + (2 * item_height);
+        let wifi_selected = selected == 2;
+        if wifi_selected {
+            fb.fill_rect(4, wifi_y - 2, fb.width() - 8, item_height - 2, theme::SELECTION_BG);
+            Self::draw_text(fb, 8, wifi_y, ">", theme::ACCENT, 1);
+        }
+        let wifi_color = if wifi_selected { theme::DESTRUCTIVE } else { theme::TEXT_MUTED };
+        Self::draw_text(fb, 20, wifi_y, "Reset WiFi", wifi_color, 1);
+
+        // Back (index 3)
+        let back_y = start_y + (3 * item_height);
+        let back_selected = selected == 3;
         if back_selected {
             fb.fill_rect(4, back_y - 2, fb.width() - 8, item_height - 2, theme::SELECTION_BG);
             Self::draw_text(fb, 8, back_y, ">", theme::ACCENT, 1);
@@ -457,12 +468,23 @@ impl Renderer {
         Self::draw_text_centered(fb, h - 10, "press to select", theme::TEXT_MUTED, 1);
     }
 
-    /// Render empty state
-    pub fn render_empty(fb: &mut FrameBuffer) {
+    /// Render empty state (mode-aware)
+    pub fn render_empty(fb: &mut FrameBuffer, wifi_mode: &WiFiMode) {
         Self::clear(fb);
 
         Self::draw_text_centered(fb, 30, "No tasks", theme::TEXT_PRIMARY, 2);
-        Self::draw_text_centered(fb, 60, "Add tasks via web", theme::TEXT_MUTED, 1);
+
+        match wifi_mode {
+            WiFiMode::Station { ip, .. } => {
+                let url = crate::wifi::web_url_from_ip(*ip);
+                Self::draw_text_centered(fb, 55, "Add tasks at:", theme::TEXT_MUTED, 1);
+                Self::draw_text_centered(fb, 68, &url, theme::ACCENT, 1);
+            }
+            WiFiMode::AccessPoint { .. } => {
+                Self::draw_text_centered(fb, 60, "Add tasks via web", theme::TEXT_MUTED, 1);
+            }
+        }
+
         Self::draw_text_centered(fb, fb.height() - 10, "press for QR code", theme::TEXT_MUTED, 1);
     }
 
@@ -643,8 +665,8 @@ impl Renderer {
         Self::draw_text_centered(fb, fb.height() - 10, "long press: back", theme::TEXT_MUTED, 1);
     }
 
-    /// Render QR code screen with URL
-    pub fn render_qr_code(fb: &mut FrameBuffer, data: &str, url: &str) {
+    /// Render QR code screen (mode-aware: WiFi QR in AP mode, URL QR in STA mode)
+    pub fn render_qr_code(fb: &mut FrameBuffer, wifi_mode: &WiFiMode, url: &str) {
         use qrcode::QrCode;
 
         Self::clear(fb);
@@ -652,9 +674,19 @@ impl Renderer {
         let h = fb.height();
         let w = fb.width();
 
-        Self::draw_text_centered(fb, 2, "Scan to connect", theme::TEXT_PRIMARY, 1);
+        // Choose QR data and header based on mode
+        let (qr_data, header) = match wifi_mode {
+            WiFiMode::AccessPoint { .. } => {
+                (crate::wifi::wifi_qr_string(), "Scan to connect")
+            }
+            WiFiMode::Station { .. } => {
+                (String::from(url), "Scan to open")
+            }
+        };
 
-        if let Ok(code) = QrCode::new(data.as_bytes()) {
+        Self::draw_text_centered(fb, 2, header, theme::TEXT_PRIMARY, 1);
+
+        if let Ok(code) = QrCode::new(qr_data.as_bytes()) {
             let qr_size = code.width();
             let available = 86u32;
             let pixel_size = (available / qr_size as u32).max(1);
@@ -701,6 +733,75 @@ impl Renderer {
 
         Self::draw_text_centered(fb, 50, message, theme::TEXT_PRIMARY, 1);
         Self::draw_text_centered(fb, 70, "Please wait...", theme::TEXT_MUTED, 1);
+    }
+
+    /// Render WiFi connection failure screen
+    pub fn render_wifi_failed(fb: &mut FrameBuffer, ssid: &str) {
+        Self::clear(fb);
+
+        Self::draw_text_centered(fb, 20, "WiFi Failed", theme::DESTRUCTIVE, 2);
+
+        let lines = wrap_text(ssid, 22);
+        for (i, line) in lines.iter().take(2).enumerate() {
+            Self::draw_text_centered(fb, 50 + (i as u32 * 10), line, theme::TEXT_MUTED, 1);
+        }
+
+        Self::draw_text_centered(fb, 80, "Restarting...", theme::TEXT_MUTED, 1);
+    }
+
+    /// Render Reset WiFi confirmation dialog
+    pub fn render_reset_wifi_confirm(fb: &mut FrameBuffer, confirmed: bool) {
+        Self::clear(fb);
+
+        let w = fb.width();
+        let h = fb.height();
+
+        // Warning icon
+        Self::draw_text_centered(fb, 15, "!", theme::DESTRUCTIVE, 3);
+
+        Self::draw_text_centered(fb, 45, "Reset WiFi?", theme::TEXT_PRIMARY, 1);
+        Self::draw_text_centered(fb, 58, "Device will restart", theme::TEXT_MUTED, 1);
+        Self::draw_text_centered(fb, 68, "in setup mode", theme::TEXT_MUTED, 1);
+
+        // Buttons
+        let btn_y = h - 28;
+        let btn_width: u32 = 52;
+        let btn_height: u32 = 16;
+        let gap: u32 = 16;
+
+        let cancel_x = (w - btn_width * 2 - gap) / 2;
+        let confirm_x = cancel_x + btn_width + gap;
+
+        // Cancel button
+        if !confirmed {
+            Self::draw_button_pill(fb, cancel_x, btn_y, btn_width, btn_height, "Cancel", theme::SUCCESS, theme::TEXT_PRIMARY);
+        } else {
+            let text_x = cancel_x + (btn_width - Self::text_width("Cancel", 1)) / 2;
+            Self::draw_text(fb, text_x, btn_y + 4, "Cancel", theme::TEXT_MUTED, 1);
+        }
+
+        // Reset button
+        if confirmed {
+            Self::draw_button_pill(fb, confirm_x, btn_y, btn_width, btn_height, "Reset", theme::DESTRUCTIVE, theme::TEXT_PRIMARY);
+        } else {
+            let text_x = confirm_x + (btn_width - Self::text_width("Reset", 1)) / 2;
+            Self::draw_text(fb, text_x, btn_y + 4, "Reset", theme::TEXT_MUTED, 1);
+        }
+    }
+
+    /// Render station mode "connected" splash
+    pub fn render_connected(fb: &mut FrameBuffer, ssid: &str, url: &str) {
+        Self::clear(fb);
+
+        Self::draw_text_centered(fb, 20, "Connected!", theme::SUCCESS, 2);
+
+        let lines = wrap_text(ssid, 22);
+        for (i, line) in lines.iter().take(2).enumerate() {
+            Self::draw_text_centered(fb, 50 + (i as u32 * 10), line, theme::TEXT_PRIMARY, 1);
+        }
+
+        Self::draw_text_centered(fb, 80, url, theme::ACCENT, 1);
+        Self::draw_text_centered(fb, 100, "Starting...", theme::TEXT_MUTED, 1);
     }
 }
 

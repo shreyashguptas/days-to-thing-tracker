@@ -1,7 +1,7 @@
 /// REST API + Web UI server via EspHttpServer
 ///
-/// Serves on port 80 (SoftAP mode - only server on device).
-/// 9 REST endpoints for task CRUD, plus time sync endpoint.
+/// Serves on port 80.
+/// REST endpoints for task CRUD, time sync, and WiFi management.
 extern crate alloc;
 
 use alloc::format;
@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex};
 
 use esp_idf_svc::http::server::{Configuration as HttpConfig, EspHttpServer};
 use esp_idf_svc::http::Method;
+use esp_idf_svc::nvs::EspDefaultNvsPartition;
+use esp_idf_svc::wifi::{BlockingWifi, EspWifi};
 
 use chrono::NaiveDate;
 use serde_json::json;
@@ -19,6 +21,7 @@ use serde_json::json;
 use crate::config;
 use crate::models::RecurrenceType;
 use crate::storage::Storage;
+use crate::wifi::{self, WiFiMode};
 
 /// Shared state between HTTP server and main thread
 pub type SharedStorage = Arc<Mutex<Storage>>;
@@ -26,11 +29,17 @@ pub type SharedStorage = Arc<Mutex<Storage>>;
 /// Shared time source - seconds since epoch, set by phone
 pub type SharedTime = Arc<Mutex<Option<i64>>>;
 
+/// Shared WiFi instance for scanning (AP mode only)
+pub type SharedWifi = Arc<Mutex<BlockingWifi<EspWifi<'static>>>>;
+
 /// Start the HTTP server
 pub fn start_server(
     storage: SharedStorage,
     time_source: SharedTime,
-    ap_ip: [u8; 4],
+    ip: [u8; 4],
+    wifi_mode: WiFiMode,
+    shared_wifi: Option<SharedWifi>,
+    nvs_partition: Option<EspDefaultNvsPartition>,
 ) -> Result<EspHttpServer<'static>, Box<dyn std::error::Error>> {
     let server_config = HttpConfig {
         http_port: config::HTTP_PORT,
@@ -52,7 +61,7 @@ pub fn start_server(
     // Captive portal detection handlers
     // Redirect connectivity checks to our web UI so phones auto-open it
     {
-        let url = format!("http://{}.{}.{}.{}/", ap_ip[0], ap_ip[1], ap_ip[2], ap_ip[3]);
+        let url = format!("http://{}.{}.{}.{}/", ip[0], ip[1], ip[2], ip[3]);
 
         // Android connectivity check
         let redirect = url.clone();
@@ -221,6 +230,127 @@ pub fn start_server(
             let body = json!({"status": "ok"}).to_string();
             let mut resp = req.into_ok_response()?;
             resp.write(body.as_bytes())?;
+            Ok(())
+        })?;
+    }
+
+    // === WiFi management endpoints ===
+
+    // GET /api/wifi/status
+    {
+        let mode = wifi_mode.clone();
+        server.fn_handler("/api/wifi/status", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            let ip = mode.ip();
+            let body = json!({
+                "mode": mode.mode_str(),
+                "ssid": mode.ssid().unwrap_or(""),
+                "ip": format!("{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3]),
+                "connected": mode.is_station(),
+                "hostname": config::MDNS_HOSTNAME,
+            })
+            .to_string();
+            let mut resp = req.into_ok_response()?;
+            resp.write(body.as_bytes())?;
+            Ok(())
+        })?;
+    }
+
+    // GET /api/wifi/scan
+    {
+        let shared_w = shared_wifi.clone();
+        server.fn_handler("/api/wifi/scan", Method::Get, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            if let Some(ref w) = shared_w {
+                let mut wifi_guard = w.lock().unwrap();
+                let networks = wifi::scan_networks(&mut wifi_guard);
+                let json_networks: Vec<serde_json::Value> = networks
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "ssid": n.ssid,
+                            "rssi": n.rssi,
+                            "auth": n.auth,
+                        })
+                    })
+                    .collect();
+                let body = serde_json::to_string(&json_networks).unwrap_or_else(|_| "[]".into());
+                let mut resp = req.into_ok_response()?;
+                resp.write(body.as_bytes())?;
+            } else {
+                let body = json!({"error": "Scan only available in AP mode"}).to_string();
+                let mut resp = req.into_response(400, None, &[("Content-Type", "application/json")])?;
+                resp.write(body.as_bytes())?;
+            }
+            Ok(())
+        })?;
+    }
+
+    // POST /api/wifi/connect
+    {
+        let nvs = nvs_partition.clone();
+        server.fn_handler("/api/wifi/connect", Method::Post, move |mut req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            let mut buf = [0u8; 512];
+            let len = req.read(&mut buf).unwrap_or(0);
+            let body_str = core::str::from_utf8(&buf[..len]).unwrap_or("");
+
+            if let Ok(data) = serde_json::from_str::<serde_json::Value>(body_str) {
+                let ssid = data["ssid"].as_str().unwrap_or("");
+                let password = data["password"].as_str().unwrap_or("");
+
+                if ssid.is_empty() {
+                    let err = json!({"error": "SSID required"}).to_string();
+                    let mut resp = req.into_response(400, None, &[("Content-Type", "application/json")])?;
+                    resp.write(err.as_bytes())?;
+                    return Ok(());
+                }
+
+                if let Some(ref nvs_part) = nvs {
+                    if let Err(e) = wifi::save_wifi_creds(nvs_part, ssid, password) {
+                        log::error!("Failed to save WiFi creds: {}", e);
+                        let err = json!({"error": "Failed to save credentials"}).to_string();
+                        let mut resp = req.into_response(500, None, &[("Content-Type", "application/json")])?;
+                        resp.write(err.as_bytes())?;
+                        return Ok(());
+                    }
+                }
+
+                let body = json!({"status": "ok", "message": "Credentials saved. Restarting..."}).to_string();
+                let mut resp = req.into_ok_response()?;
+                resp.write(body.as_bytes())?;
+
+                // Schedule restart after response is sent
+                std::thread::spawn(|| {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    log::info!("Restarting to apply WiFi credentials...");
+                    unsafe { esp_idf_svc::sys::esp_restart(); }
+                });
+            } else {
+                let err = json!({"error": "Invalid JSON"}).to_string();
+                let mut resp = req.into_response(400, None, &[("Content-Type", "application/json")])?;
+                resp.write(err.as_bytes())?;
+            }
+            Ok(())
+        })?;
+    }
+
+    // DELETE /api/wifi/credentials
+    {
+        let nvs = nvs_partition.clone();
+        server.fn_handler("/api/wifi/credentials", Method::Delete, move |req| -> Result<(), esp_idf_svc::io::EspIOError> {
+            if let Some(ref nvs_part) = nvs {
+                let _ = wifi::clear_wifi_creds(nvs_part);
+            }
+
+            let body = json!({"status": "ok", "message": "Credentials cleared. Restarting..."}).to_string();
+            let mut resp = req.into_ok_response()?;
+            resp.write(body.as_bytes())?;
+
+            // Schedule restart
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                log::info!("Restarting after WiFi credential reset...");
+                unsafe { esp_idf_svc::sys::esp_restart(); }
+            });
+
             Ok(())
         })?;
     }

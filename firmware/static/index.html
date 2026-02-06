@@ -513,17 +513,169 @@
         input[type="date"]::-webkit-date-and-time-value {
             text-align: left;
         }
+
+        /* WiFi Provisioning UI */
+        .wifi-setup {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .wifi-card {
+            background: var(--bg-card);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: var(--shadow-soft);
+            margin-bottom: 16px;
+        }
+
+        .wifi-card h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+        }
+
+        .scan-btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-coral) 100%);
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .scan-btn:active { transform: scale(0.97); }
+        .scan-btn:disabled { opacity: 0.6; }
+
+        .network-list {
+            max-height: 240px;
+            overflow-y: auto;
+            margin-top: 12px;
+        }
+
+        .network-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: 2px solid transparent;
+        }
+        .network-item:hover { background: var(--bg-warm); }
+        .network-item.selected { border-color: var(--accent-teal); background: rgba(100, 216, 203, 0.08); }
+
+        .network-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+        }
+
+        .network-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .signal-bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 1px;
+            height: 14px;
+        }
+        .signal-bar {
+            width: 3px;
+            background: var(--text-light);
+            border-radius: 1px;
+        }
+        .signal-bar.active { background: var(--accent-teal); }
+
+        .wifi-password-card {
+            display: none;
+        }
+        .wifi-password-card.visible { display: block; }
+
+        .connect-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent-teal) 0%, #52C9BA 100%);
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 12px;
+        }
+        .connect-btn:active { transform: scale(0.97); }
+        .connect-btn:disabled { opacity: 0.6; }
+
+        .wifi-status-msg {
+            text-align: center;
+            padding: 40px 20px;
+            background: var(--bg-card);
+            border-radius: 20px;
+            box-shadow: var(--shadow-soft);
+        }
+        .wifi-status-msg h2 { font-size: 1.4rem; margin-bottom: 8px; }
+        .wifi-status-msg p { color: var(--text-secondary); margin-top: 8px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Days Tracker</h1>
-        <p class="subtitle">Keep your home on track</p>
+    <!-- WiFi Provisioning UI (shown in AP mode) -->
+    <div id="wifi-setup" class="wifi-setup" style="display:none;">
+        <div class="header">
+            <h1>Days Tracker</h1>
+            <p class="subtitle">WiFi Setup</p>
+        </div>
+
+        <div class="wifi-card">
+            <h3>WiFi Networks</h3>
+            <button class="scan-btn" id="scan-btn" onclick="scanNetworks()">Scan for Networks</button>
+            <div class="network-list" id="network-list"></div>
+        </div>
+
+        <div class="wifi-card wifi-password-card" id="password-card">
+            <h3>Connect to: <span id="selected-ssid"></span></h3>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="wifi-password" placeholder="Enter WiFi password">
+            </div>
+            <button class="connect-btn" id="connect-btn" onclick="connectToWifi()">Connect</button>
+        </div>
     </div>
 
-    <div class="tasks" id="tasks"></div>
+    <!-- Restart message (shown after connect) -->
+    <div id="wifi-restart-msg" style="display:none; max-width:400px; margin:60px auto; padding:0 16px;">
+        <div class="wifi-status-msg">
+            <h2 style="color: var(--accent-teal);">Connecting...</h2>
+            <p>Device is restarting and connecting to your WiFi.</p>
+            <p style="margin-top:16px; font-weight:600;">Once connected, open:</p>
+            <p style="color: var(--accent-teal); font-size: 1.1rem; font-weight: 700; margin-top: 4px;">http://daystracker.local</p>
+            <p style="margin-top:16px; font-size:0.85rem;">Make sure your phone is on the same WiFi network.</p>
+        </div>
+    </div>
 
-    <button class="add-btn" onclick="showAddModal()">+</button>
+    <!-- Normal task management UI (shown in STA mode) -->
+    <div id="app-main" style="display:none;">
+        <div class="header">
+            <h1>Days Tracker</h1>
+            <p class="subtitle">Keep your home on track</p>
+        </div>
+
+        <div class="tasks" id="tasks"></div>
+
+        <button class="add-btn" onclick="showAddModal()">+</button>
+    </div>
 
     <!-- Delete Confirmation Modal -->
     <div class="modal" id="delete-modal">
@@ -867,10 +1019,126 @@
             }
         });
 
-        // Sync time from phone to device (device has no NTP)
+        // === WiFi Provisioning Functions ===
+        let selectedSSID = '';
+
+        async function scanNetworks() {
+            const btn = document.getElementById('scan-btn');
+            btn.disabled = true;
+            btn.textContent = 'Scanning...';
+
+            try {
+                const res = await fetch('/api/wifi/scan');
+                const networks = await res.json();
+                renderNetworks(networks);
+            } catch (e) {
+                console.log('Scan failed:', e);
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Scan Again';
+        }
+
+        function renderNetworks(networks) {
+            const el = document.getElementById('network-list');
+            el.textContent = '';
+
+            if (!networks.length) {
+                const p = document.createElement('p');
+                p.style.cssText = 'text-align:center;color:var(--text-secondary);padding:12px;';
+                p.textContent = 'No networks found. Try again.';
+                el.appendChild(p);
+                return;
+            }
+
+            networks.forEach(n => {
+                const item = document.createElement('div');
+                item.className = 'network-item';
+                item.onclick = () => selectNetwork(n.ssid, n.auth);
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'network-name';
+                nameSpan.textContent = n.ssid;
+
+                const metaSpan = document.createElement('span');
+                metaSpan.className = 'network-meta';
+
+                if (n.auth !== 'open') {
+                    const lock = document.createElement('span');
+                    lock.textContent = '\u{1F512}';
+                    metaSpan.appendChild(lock);
+                }
+
+                const barsDiv = document.createElement('span');
+                barsDiv.className = 'signal-bars';
+                const strength = n.rssi > -50 ? 4 : n.rssi > -60 ? 3 : n.rssi > -70 ? 2 : 1;
+                [4,8,12,16].forEach((h, i) => {
+                    const bar = document.createElement('span');
+                    bar.className = 'signal-bar' + (i < strength ? ' active' : '');
+                    bar.style.height = h + 'px';
+                    barsDiv.appendChild(bar);
+                });
+                metaSpan.appendChild(barsDiv);
+
+                item.appendChild(nameSpan);
+                item.appendChild(metaSpan);
+                el.appendChild(item);
+            });
+        }
+
+        function selectNetwork(ssid, auth) {
+            selectedSSID = ssid;
+            document.getElementById('selected-ssid').textContent = ssid;
+            document.getElementById('wifi-password').value = '';
+            document.getElementById('password-card').classList.add('visible');
+
+            document.querySelectorAll('.network-item').forEach(el => {
+                el.classList.toggle('selected', el.querySelector('.network-name').textContent === ssid);
+            });
+
+            if (auth === 'open') {
+                document.getElementById('wifi-password').placeholder = 'No password needed';
+            } else {
+                document.getElementById('wifi-password').placeholder = 'Enter WiFi password';
+            }
+        }
+
+        async function connectToWifi() {
+            if (!selectedSSID) return;
+
+            const btn = document.getElementById('connect-btn');
+            btn.disabled = true;
+            btn.textContent = 'Connecting...';
+
+            try {
+                const res = await fetch('/api/wifi/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ssid: selectedSSID,
+                        password: document.getElementById('wifi-password').value
+                    })
+                });
+
+                if (res.ok) {
+                    document.getElementById('wifi-setup').style.display = 'none';
+                    document.getElementById('wifi-restart-msg').style.display = 'block';
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Connect';
+                    alert('Failed to save credentials. Try again.');
+                }
+            } catch (e) {
+                // Device is restarting - show success message
+                document.getElementById('wifi-setup').style.display = 'none';
+                document.getElementById('wifi-restart-msg').style.display = 'block';
+            }
+        }
+
+        // === Mode Detection + Init ===
         async function syncTime() {
             try {
-                await fetch(`${API}/../api/time`, {
+                await fetch('/api/time', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ timestamp: Date.now() })
@@ -880,7 +1148,28 @@
             }
         }
 
-        syncTime().then(() => loadTasks());
+        async function init() {
+            try {
+                const res = await fetch('/api/wifi/status');
+                const status = await res.json();
+
+                if (status.mode === 'ap') {
+                    document.getElementById('wifi-setup').style.display = 'block';
+                    document.getElementById('app-main').style.display = 'none';
+                } else {
+                    document.getElementById('wifi-setup').style.display = 'none';
+                    document.getElementById('app-main').style.display = 'block';
+                    await syncTime();
+                    loadTasks();
+                }
+            } catch (e) {
+                document.getElementById('app-main').style.display = 'block';
+                await syncTime();
+                loadTasks();
+            }
+        }
+
+        init();
     </script>
 </body>
 </html>

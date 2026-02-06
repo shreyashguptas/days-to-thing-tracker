@@ -3,7 +3,7 @@
 /// Standalone embedded firmware for XIAO ESP32-C6 with:
 /// - ST7735 160x128 TFT display via SPI
 /// - KY-040 rotary encoder for navigation
-/// - WiFi SoftAP for phone-based task management
+/// - WiFi Station mode (joins home WiFi) with SoftAP provisioning fallback
 /// - JSON storage on LittleFS
 extern crate alloc;
 
@@ -44,11 +44,12 @@ mod wifi;
 
 use display::FrameBuffer;
 use encoder::{Encoder, EncoderEvent};
-use http_server::{SharedStorage, SharedTime};
+use http_server::{SharedStorage, SharedTime, SharedWifi};
 use models::{HistoryDisplayEntry, TaskDisplayData};
 use renderer::Renderer;
 use storage::Storage;
 use views::{RenderCommand, ViewNavigator, ViewState};
+use wifi::WiFiMode;
 
 fn main() {
     // Initialize ESP-IDF
@@ -109,32 +110,96 @@ fn main() {
     // === Create framebuffer ===
     let mut fb = FrameBuffer::new();
 
-    // === Start WiFi SoftAP ===
-    log::info!("Starting WiFi SoftAP...");
+    // === Determine WiFi mode: Station (saved creds) or AP (provisioning) ===
     Renderer::render_connecting(&mut fb, "Starting WiFi...");
     flush_to_display(&mut hw_display, &fb);
 
-    let wifi = wifi::init_softap(peripherals.modem, sysloop, nvs).unwrap();
-    log::info!("WiFi SoftAP ready");
+    // Clone NVS partition for credential access (separate from WiFi driver)
+    let nvs_for_creds = nvs.clone();
 
-    // === Configure captive portal (DHCP DNS + DNS server) ===
-    let ap_ip = wifi::configure_captive_portal(&wifi);
-    let ap_url = format!("http://{}.{}.{}.{}", ap_ip[0], ap_ip[1], ap_ip[2], ap_ip[3]);
-    dns::start(ap_ip);
-    log::info!("Captive portal ready: {}", ap_url);
-    let _wifi = wifi; // keep alive
+    // Extract modem before branching (consumed by whichever WiFi mode initializes)
+    let modem = peripherals.modem;
+
+    // Check for saved WiFi credentials
+    let saved_creds = nvs_for_creds
+        .as_ref()
+        .and_then(|nvs_part| wifi::load_wifi_creds(nvs_part));
+
+    let (wifi_mode, _wifi, shared_wifi, _dns_handle): (
+        WiFiMode,
+        Option<wifi::BlockingWifiHandle>,
+        Option<SharedWifi>,
+        bool,
+    ) = if let Some(ref creds) = saved_creds {
+        // === Station Mode: Connect to saved WiFi ===
+        log::info!("Found saved WiFi credentials, trying Station mode...");
+        Renderer::render_connecting(&mut fb, &format!("Connecting to {}...", creds.ssid));
+        flush_to_display(&mut hw_display, &fb);
+
+        // Try connecting (single attempt — on failure, clear creds and restart into AP)
+        log::info!("Connecting to '{}'...", creds.ssid);
+
+        let result = wifi::init_station(
+            modem,
+            sysloop.clone(),
+            nvs.clone(),
+            creds,
+        );
+
+        if let Ok((wifi_inst, ip)) = result {
+            let ssid = creds.ssid.clone();
+            let mode = WiFiMode::Station { ssid: ssid.clone(), ip };
+
+            let url = wifi::web_url_from_ip(ip);
+            Renderer::render_connected(&mut fb, &ssid, &url);
+            flush_to_display(&mut hw_display, &fb);
+            FreeRtos::delay_ms(2000);
+
+            log::info!("WiFi Station mode ready: {}", url);
+
+            // No shared_wifi needed in STA mode (no scanning)
+            // No DNS captive portal needed in STA mode
+            (mode, Some(wifi_inst), None::<SharedWifi>, false)
+        } else {
+            // Connection failed — clear bad credentials and restart into AP mode
+            log::error!("Station connection failed, clearing credentials and restarting...");
+            Renderer::render_wifi_failed(&mut fb, &creds.ssid);
+            flush_to_display(&mut hw_display, &fb);
+
+            if let Some(ref nvs_part) = nvs_for_creds {
+                let _ = wifi::clear_wifi_creds(nvs_part);
+            }
+
+            FreeRtos::delay_ms(3000);
+            unsafe { esp_idf_svc::sys::esp_restart(); }
+            // esp_restart() never returns, but we need to satisfy the type checker
+            loop { FreeRtos::delay_ms(1000); }
+        }
+    } else {
+        // === AP Mode: Provisioning ===
+        log::info!("No saved WiFi credentials, starting SoftAP provisioning...");
+        Renderer::render_connecting(&mut fb, "Starting setup...");
+        flush_to_display(&mut hw_display, &fb);
+
+        let wifi_inst = wifi::init_softap(modem, sysloop, nvs.clone()).unwrap();
+        log::info!("WiFi SoftAP ready");
+
+        // Configure captive portal
+        let ap_ip = wifi::configure_captive_portal(&wifi_inst);
+        let ap_url = format!("http://{}.{}.{}.{}", ap_ip[0], ap_ip[1], ap_ip[2], ap_ip[3]);
+        dns::start(ap_ip);
+        log::info!("Captive portal ready: {}", ap_url);
+
+        let mode = WiFiMode::AccessPoint { ip: ap_ip };
+
+        // Wrap WiFi in Arc<Mutex> for scan access from HTTP server
+        let shared_wifi: SharedWifi = Arc::new(Mutex::new(wifi_inst));
+
+        (mode, None, Some(shared_wifi), true)
+    };
 
     // === Mount Storage ===
     log::info!("Mounting storage...");
-
-    // Mount LittleFS partition
-    #[cfg(feature = "littlefs")]
-    {
-        // LittleFS mount code would go here
-        // For now we use the ESP-IDF SPIFFS VFS
-    }
-
-    // Use SPIFFS for storage (configured as LittleFS-compatible in partitions)
     let _spiffs = unsafe { esp_idf_svc::fs::spiffs::Spiffs::new(config::STORAGE_PARTITION) };
 
     let storage = Arc::new(Mutex::new(Storage::new(
@@ -145,14 +210,28 @@ fn main() {
     // === Shared time source (synced from phone) ===
     let time_source: SharedTime = Arc::new(Mutex::new(None));
 
-    // === Start HTTP Server (in current thread context, runs async) ===
+    // === Start HTTP Server ===
     log::info!("Starting HTTP server...");
-    let _server = http_server::start_server(storage.clone(), time_source.clone(), ap_ip).unwrap();
+    let _server = http_server::start_server(
+        storage.clone(),
+        time_source.clone(),
+        wifi_mode.ip(),
+        wifi_mode.clone(),
+        shared_wifi,
+        nvs_for_creds.clone(),
+    )
+    .unwrap();
     log::info!("HTTP server ready on port {}", config::HTTP_PORT);
 
     // === Initialize View Navigator ===
     let mut nav = ViewNavigator::new();
-    nav.ctx.ap_url = ap_url;
+    nav.ctx.wifi_mode = wifi_mode.clone();
+
+    // Set the URL based on WiFi mode
+    nav.ctx.ap_url = match &wifi_mode {
+        WiFiMode::Station { ip, .. } => wifi::web_url_from_ip(*ip),
+        WiFiMode::AccessPoint { ip } => format!("http://{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3]),
+    };
 
     // Load initial data
     {
@@ -171,6 +250,9 @@ fn main() {
 
     // === Main Event Loop ===
     log::info!("Ready. Entering main loop.");
+
+    // Keep NVS partition reference for WiFi reset action
+    let nvs_for_reset = nvs_for_creds;
 
     let mut last_idle_check = Instant::now();
     let mut needs_render = true;
@@ -193,7 +275,7 @@ fn main() {
 
             // Handle actions
             if let Some(action) = action {
-                handle_action(action, &mut nav, &storage, &time_source);
+                handle_action(action, &mut nav, &storage, &time_source, &nvs_for_reset);
             }
 
             needs_render = true;
@@ -230,6 +312,7 @@ fn handle_action(
     nav: &mut ViewNavigator,
     storage: &SharedStorage,
     time_source: &SharedTime,
+    nvs_partition: &Option<EspDefaultNvsPartition>,
 ) {
     let today = get_today(time_source);
 
@@ -240,7 +323,6 @@ fn handle_action(
                 let now_iso = get_now_iso(time_source);
 
                 // Run completion animation
-                // (In embedded, we handle this inline since we own the display)
                 let start = Instant::now();
                 let duration_ms = config::COMPLETING_DURATION_MS;
 
@@ -288,6 +370,14 @@ fn handle_action(
                     "disabled"
                 }
             );
+        }
+        "reset_wifi" => {
+            log::info!("Resetting WiFi credentials and restarting...");
+            if let Some(ref nvs_part) = nvs_partition {
+                let _ = wifi::clear_wifi_creds(nvs_part);
+            }
+            FreeRtos::delay_ms(500);
+            unsafe { esp_idf_svc::sys::esp_restart(); }
         }
         "filter_tasks" => {
             let urgency = nav.ctx.filtered_urgency.clone().unwrap_or_default();
@@ -361,8 +451,8 @@ fn render_current_view(
         RenderCommand::EmptyFiltered { filter_name } => {
             Renderer::render_empty_filtered(fb, &filter_name);
         }
-        RenderCommand::Empty => {
-            Renderer::render_empty(fb);
+        RenderCommand::Empty { ref wifi_mode } => {
+            Renderer::render_empty(fb, wifi_mode);
         }
         RenderCommand::ActionMenu {
             task_name,
@@ -389,7 +479,6 @@ fn render_current_view(
             task_name,
             selected,
         } => {
-            let s = storage.lock().unwrap();
             let entries: alloc::vec::Vec<HistoryDisplayEntry> = nav
                 .ctx
                 .history
@@ -407,9 +496,11 @@ fn render_current_view(
         } => {
             Renderer::render_settings(fb, selected, screen_timeout_enabled);
         }
-        RenderCommand::QrCode { url } => {
-            let qr_data = wifi::wifi_qr_string();
-            Renderer::render_qr_code(fb, &qr_data, &url);
+        RenderCommand::QrCode { ref wifi_mode, ref url } => {
+            Renderer::render_qr_code(fb, wifi_mode, url);
+        }
+        RenderCommand::ResetWifiConfirm { confirmed } => {
+            Renderer::render_reset_wifi_confirm(fb, confirmed);
         }
     }
 }

@@ -39,5 +39,13 @@ pub const STORAGE_PARTITION: &str = "storage";
 pub const TASKS_FILE: &str = "/storage/tasks.json";
 pub const HISTORY_FILE: &str = "/storage/history.json";
 
+// NVS (Non-Volatile Storage) for WiFi credentials
+pub const NVS_NAMESPACE: &str = "wifi";
+pub const NVS_KEY_SSID: &str = "ssid";
+pub const NVS_KEY_PASSWORD: &str = "password";
+
+// mDNS hostname (accessible as http://daystracker.local)
+pub const MDNS_HOSTNAME: &str = "daystracker";
+
 // SPI clock speed
 pub const SPI_FREQ_HZ: u32 = 32_000_000;

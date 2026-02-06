@@ -5,6 +5,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::models::{CompletionRecord, Task};
+use crate::wifi::WiFiMode;
 
 /// Possible view states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +19,7 @@ pub enum ViewState {
     Settings,
     QrCode,
     Empty,
+    ResetWifiConfirm,
 }
 
 /// Dashboard selectable items
@@ -72,12 +74,14 @@ impl ActionItem {
 pub enum SettingItem {
     ManageTasks,
     ScreenTimeout,
+    ResetWifi,
     Back,
 }
 
-const SETTING_ITEMS: [SettingItem; 3] = [
+const SETTING_ITEMS: [SettingItem; 4] = [
     SettingItem::ManageTasks,
     SettingItem::ScreenTimeout,
+    SettingItem::ResetWifi,
     SettingItem::Back,
 ];
 
@@ -113,6 +117,12 @@ pub struct ViewContext {
 
     // Network info
     pub ap_url: String,
+
+    // WiFi mode (determines QR code behavior and display)
+    pub wifi_mode: WiFiMode,
+
+    // Reset WiFi confirmation
+    pub reset_wifi_confirmed: bool,
 }
 
 /// Task counts for dashboard
@@ -141,6 +151,8 @@ impl ViewContext {
             setting_index: 0,
             screen_timeout_enabled: true,
             ap_url: String::new(),
+            wifi_mode: WiFiMode::AccessPoint { ip: [192, 168, 4, 1] },
+            reset_wifi_confirmed: false,
         }
     }
 
@@ -176,7 +188,9 @@ pub enum RenderCommand {
     EmptyFiltered {
         filter_name: String,
     },
-    Empty,
+    Empty {
+        wifi_mode: WiFiMode,
+    },
     ActionMenu {
         task_name: String,
         selected: usize,
@@ -199,7 +213,11 @@ pub enum RenderCommand {
         screen_timeout_enabled: bool,
     },
     QrCode {
+        wifi_mode: WiFiMode,
         url: String,
+    },
+    ResetWifiConfirm {
+        confirmed: bool,
     },
 }
 
@@ -260,8 +278,9 @@ impl ViewNavigator {
             ViewState::TaskActions => {
                 ctx.action_index = (ctx.action_index + 1) % ACTION_ITEMS.len();
             }
-            ViewState::DeleteConfirm => {
+            ViewState::DeleteConfirm | ViewState::ResetWifiConfirm => {
                 ctx.delete_confirmed = !ctx.delete_confirmed;
+                ctx.reset_wifi_confirmed = !ctx.reset_wifi_confirmed;
             }
             ViewState::TaskHistory => {
                 if !ctx.history.is_empty() {
@@ -307,8 +326,9 @@ impl ViewNavigator {
                     ctx.action_index - 1
                 };
             }
-            ViewState::DeleteConfirm => {
+            ViewState::DeleteConfirm | ViewState::ResetWifiConfirm => {
                 ctx.delete_confirmed = !ctx.delete_confirmed;
+                ctx.reset_wifi_confirmed = !ctx.reset_wifi_confirmed;
             }
             ViewState::TaskHistory => {
                 ctx.history_index = ctx.history_index.saturating_sub(1);
@@ -411,9 +431,20 @@ impl ViewNavigator {
                         ctx.screen_timeout_enabled = !ctx.screen_timeout_enabled;
                         return Some("toggle_timeout");
                     }
+                    SettingItem::ResetWifi => {
+                        ctx.reset_wifi_confirmed = false;
+                        ctx.state = ViewState::ResetWifiConfirm;
+                    }
                     SettingItem::Back => {
                         ctx.state = ViewState::Dashboard;
                     }
+                }
+            }
+            ViewState::ResetWifiConfirm => {
+                if ctx.reset_wifi_confirmed {
+                    return Some("reset_wifi");
+                } else {
+                    ctx.state = ViewState::Settings;
                 }
             }
             ViewState::Empty => {
@@ -448,6 +479,9 @@ impl ViewNavigator {
             }
             ViewState::TaskActions | ViewState::DeleteConfirm | ViewState::TaskHistory => {
                 ctx.state = ViewState::TaskList;
+            }
+            ViewState::ResetWifiConfirm => {
+                ctx.state = ViewState::Settings;
             }
             ViewState::Completing => {
                 // Can't cancel completion
@@ -491,7 +525,9 @@ impl ViewNavigator {
                         filter_name: filtered.clone(),
                     }
                 } else {
-                    RenderCommand::Empty
+                    RenderCommand::Empty {
+                        wifi_mode: ctx.wifi_mode.clone(),
+                    }
                 }
             }
             ViewState::TaskActions => {
@@ -540,9 +576,15 @@ impl ViewNavigator {
                 screen_timeout_enabled: ctx.screen_timeout_enabled,
             },
             ViewState::QrCode => RenderCommand::QrCode {
+                wifi_mode: ctx.wifi_mode.clone(),
                 url: ctx.ap_url.clone(),
             },
-            ViewState::Empty => RenderCommand::Empty,
+            ViewState::Empty => RenderCommand::Empty {
+                wifi_mode: ctx.wifi_mode.clone(),
+            },
+            ViewState::ResetWifiConfirm => RenderCommand::ResetWifiConfirm {
+                confirmed: ctx.reset_wifi_confirmed,
+            },
         }
     }
 }

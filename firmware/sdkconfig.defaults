@@ -1,6 +1,7 @@
-# WiFi SoftAP configuration
+# WiFi configuration (Station + SoftAP)
 CONFIG_ESP_WIFI_SOFTAP_SUPPORT=y
 CONFIG_ESP_WIFI_NAN_ENABLE=n
+CONFIG_ESP_WIFI_STA_DISCONNECTED_PM_ENABLE=n
 
 # Custom partition table
 CONFIG_PARTITION_TABLE_CUSTOM=y
