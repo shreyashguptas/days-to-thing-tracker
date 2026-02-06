@@ -1,10 +1,12 @@
 # Days Tracker Kiosk
 
-A standalone embedded device for tracking recurring tasks. Runs on a Seeed XIAO ESP32-C6 with a 160x128 TFT display and rotary encoder. No internet required -- the device creates its own WiFi hotspot. Scan the QR code on the display to manage tasks from your phone.
+A standalone embedded device for tracking recurring tasks. Runs on a Seeed XIAO ESP32-C6 with a 160x128 TFT display and rotary encoder. Creates its own WiFi hotspot -- scan the QR code on the display to manage tasks from your phone.
 
 ## Features
 
 - **Standalone WiFi hotspot**: Device creates its own network, works anywhere with power
+- **WiFi provisioning**: Optionally connect device to your home WiFi for local network access
+- **Captive portal**: Automatically opens web UI when phone connects to device WiFi
 - **Phone-based management**: Scan QR code to connect and manage tasks via web UI
 - **160x128 TFT display**: Dark theme, task cards, dashboard with urgency counts
 - **Rotary encoder navigation**: Scroll through tasks, select actions, long press to go back
@@ -18,7 +20,7 @@ A standalone embedded device for tracking recurring tasks. Runs on a Seeed XIAO 
 | Component | Model | Notes |
 |-----------|-------|-------|
 | Microcontroller | Seeed XIAO ESP32-C6 | RISC-V, WiFi 6, ~$5 |
-| Display | 1.8" ST7735S SPI TFT LCD Display Module | Full Color 128RGB*160 Dot-matrix, 128RGB*160 Dots resolution, 3.3V, SPI interface, Drive IC: ST7735S|
+| Display | 1.8" ST7735S SPI TFT | 128x160, 3.3V, SPI, full color |
 | Input | KY-040 Rotary Encoder | With push button |
 | Power | USB-C (from XIAO board) | |
 
@@ -44,30 +46,69 @@ See [docs/pinout.md](docs/pinout.md) for full wiring diagram.
 
 ## Building and Flashing
 
-### Prerequisites
+These instructions cover building and flashing from a **Raspberry Pi** (or any Linux machine). The same toolchain also works on macOS.
 
-Install the ESP32 Rust toolchain:
+### 1. System Dependencies (Raspberry Pi / Linux)
 
 ```bash
-# Install espup (ESP32 Rust toolchain manager)
+sudo apt update
+sudo apt install -y build-essential pkg-config libudev-dev libssl-dev curl git
+```
+
+### 2. Install Rust
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+```
+
+### 3. Install ESP32 Toolchain
+
+```bash
+# ESP32 Rust toolchain manager
 cargo install espup
 espup install
 
-# Install flash tool and linker proxy
+# Flash tool and linker proxy
 cargo install espflash ldproxy
 
-# Load the ESP environment (add to your shell profile)
+# Load the ESP environment (add this line to ~/.bashrc so it runs on every shell)
+echo 'source $HOME/export-esp.sh' >> ~/.bashrc
 source $HOME/export-esp.sh
 ```
 
-### Build and Flash
+### 4. Clone and Configure
+
+```bash
+git clone <repo-url>
+cd days-to-thing-tracker
+```
+
+The file `firmware/sdkconfig.defaults` contains an absolute path to the partition table. Update it to match your system:
+
+```bash
+sed -i "s|CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=.*|CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"$(pwd)/firmware/partitions.csv\"|" firmware/sdkconfig.defaults
+```
+
+### 5. Build and Flash
+
+Connect the XIAO ESP32-C6 to the Raspberry Pi via USB-C, then:
 
 ```bash
 cd firmware
 cargo run --release
 ```
 
-This builds the firmware and flashes it to the connected XIAO ESP32-C6 via USB-C. The serial monitor will start automatically after flashing.
+This builds the firmware and flashes it to the board. The serial monitor starts automatically after flashing.
+
+If the board isn't detected, put it in **bootloader mode**: hold the **B** (boot) button, press **R** (reset), then release **B**.
+
+On Linux, if you get a permission error accessing the USB serial port:
+
+```bash
+sudo usermod -a -G dialout $USER
+# Log out and back in for the group change to take effect
+```
 
 ### Build Only (no flash)
 
@@ -76,15 +117,38 @@ cd firmware
 cargo build --release
 ```
 
+### Clean Build
+
+If you hit build errors after toolchain updates:
+
+```bash
+cd firmware
+cargo clean
+cargo run --release
+```
+
 ## Usage
 
-### First Boot
+### First Boot (AP Mode)
 
 1. Power the device via USB-C
-2. The display shows "Starting..." then "Starting WiFi..."
+2. The device starts in **Access Point mode**, creating a "DaysTracker" WiFi network
 3. If no tasks exist, a QR code appears for WiFi connection
-4. Scan the QR code with your phone to connect to the "DaysTracker" WiFi network
-5. Open `http://192.168.4.1` in your phone browser to manage tasks
+4. Scan the QR code with your phone (or connect manually to "DaysTracker", password: `tracker123`)
+5. A captive portal should auto-open; if not, check the device screen for the IP address
+6. Use the web UI to add tasks and optionally provision your home WiFi
+
+### WiFi Provisioning (Optional)
+
+From the web UI, you can connect the device to your home WiFi:
+
+1. The web UI scans for available networks
+2. Select your home WiFi and enter the password
+3. The device saves credentials and restarts in **Station mode**
+4. The device joins your home WiFi and is accessible at its assigned IP
+5. If the connection fails, the device clears saved credentials and restarts back into AP mode
+
+To reset WiFi: from Settings on the device, select "Reset WiFi" and confirm.
 
 ### Controls
 
@@ -116,19 +180,15 @@ Press on a task card to see:
 ### Settings
 
 From the dashboard, select "Settings":
-- **Manage Tasks**: Shows WiFi QR code for phone access
+- **Manage Tasks**: Shows QR code for phone access
 - **Screen Timeout**: Toggle auto-off after 5 minutes idle
-
-### Adding Tasks
-
-1. Connect your phone to the "DaysTracker" WiFi network (password: `tracker123`)
-2. Open `http://192.168.4.1` in your browser
-3. Use the web interface to create, edit, or delete tasks
-4. The kiosk display updates on the next interaction
+- **Reset WiFi**: Clear saved WiFi credentials and restart into AP mode
 
 ## API
 
-The device runs an HTTP server on port 80 at `192.168.4.1`:
+The device runs an HTTP server on port 80. The device screen shows the current IP address.
+
+### Task Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -143,11 +203,20 @@ The device runs an HTTP server on port 80 at `192.168.4.1`:
 | GET | `/api/tasks/:id/history` | Completion history |
 | POST | `/api/time` | Sync time from phone |
 
+### WiFi Provisioning Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/wifi/status` | Current WiFi mode and IP |
+| GET | `/api/wifi/scan` | Scan for available networks |
+| POST | `/api/wifi/connect` | Connect to a network |
+| DELETE | `/api/wifi/credentials` | Clear saved credentials |
+
 ### Example: Create a Task
 
 ```bash
-# Connect to DaysTracker WiFi first, then:
-curl -X POST http://192.168.4.1/api/tasks \
+# Connect to DaysTracker WiFi first, then use the IP shown on the device screen:
+curl -X POST http://<device-ip>/api/tasks \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Water Plants",
@@ -165,25 +234,25 @@ firmware/
   Cargo.toml               # Dependencies
   build.rs                 # ESP-IDF build integration
   sdkconfig.defaults       # ESP-IDF config (WiFi, partitions)
-  partitions.csv           # Flash layout (2MB app + 1.9MB storage)
+  partitions.csv           # Flash layout (1.5MB app + 2.4MB storage)
   src/
-    main.rs                # Entry point, event loop
+    main.rs                # Entry point, WiFi mode branching, event loop
     config.rs              # Pin assignments, WiFi credentials, timings
     models.rs              # Task, CompletionRecord, RecurrenceType
-    storage.rs             # JSON CRUD on flash
-    views.rs               # View state machine (9 states)
-    renderer.rs            # All UI rendering (13+ views)
+    storage.rs             # JSON CRUD on flash with backup/atomic writes
+    views.rs               # View state machine (10 states)
+    renderer.rs            # All UI rendering (16+ views)
     encoder.rs             # KY-040 rotary encoder via GPIO
     display.rs             # ST7735 SPI display + framebuffer
     theme.rs               # RGB565 color constants
     fonts.rs               # 5x7 and 12x18 bitmap font data
-    http_server.rs         # REST API (10 endpoints)
-    wifi.rs                # WiFi SoftAP setup
+    http_server.rs         # REST API + WiFi provisioning + captive portal
+    wifi.rs                # Dual-mode WiFi (SoftAP + Station), NVS credentials
+    dns.rs                 # Captive portal DNS server (AP mode)
   static/
-    index.html             # Web UI (embedded at compile time)
+    index.html             # Web UI with WiFi provisioning (embedded at compile time)
 docs/
   pinout.md                # Wiring diagram
-product-site/              # Marketing website
 ```
 
 ## Configuration
@@ -221,8 +290,15 @@ Edit `firmware/src/config.rs` to change:
 ### Web UI not loading
 
 1. Ensure phone is connected to DaysTracker WiFi
-2. Open `http://192.168.4.1` (not https)
+2. Open the IP address shown on the device screen (use http, not https)
 3. Disable mobile data on your phone (some phones prefer cellular)
+
+### USB not detected on Raspberry Pi
+
+1. Try a different USB-C cable (some are charge-only)
+2. Check `ls /dev/ttyACM*` or `ls /dev/ttyUSB*` for the serial device
+3. Put the board in bootloader mode: hold B, press R, release B
+4. Add your user to the dialout group: `sudo usermod -a -G dialout $USER`
 
 ### Build errors
 
