@@ -20,6 +20,9 @@ pub enum ViewState {
     QrCode,
     Empty,
     ResetWifiConfirm,
+    VoiceListening,
+    VoiceProcessing,
+    VoiceResult,
 }
 
 /// Dashboard selectable items
@@ -123,6 +126,12 @@ pub struct ViewContext {
 
     // Reset WiFi confirmation
     pub reset_wifi_confirmed: bool,
+
+    // Voice control state
+    pub voice_message: String,
+    pub voice_elapsed_secs: f32,
+    /// The view we came from before entering voice mode
+    pub voice_return_state: Option<ViewState>,
 }
 
 /// Task counts for dashboard
@@ -153,6 +162,9 @@ impl ViewContext {
             ap_url: String::new(),
             wifi_mode: WiFiMode::AccessPoint { ip: [192, 168, 4, 1] },
             reset_wifi_confirmed: false,
+            voice_message: String::new(),
+            voice_elapsed_secs: 0.0,
+            voice_return_state: None,
         }
     }
 
@@ -218,6 +230,13 @@ pub enum RenderCommand {
     },
     ResetWifiConfirm {
         confirmed: bool,
+    },
+    VoiceListening {
+        elapsed_secs: f32,
+    },
+    VoiceProcessing,
+    VoiceResult {
+        message: String,
     },
 }
 
@@ -292,6 +311,7 @@ impl ViewNavigator {
                 ctx.setting_index = (ctx.setting_index + 1).min(max_idx);
             }
             ViewState::Empty | ViewState::QrCode | ViewState::Completing => {}
+            ViewState::VoiceListening | ViewState::VoiceProcessing | ViewState::VoiceResult => {}
         }
     }
 
@@ -337,6 +357,7 @@ impl ViewNavigator {
                 ctx.setting_index = ctx.setting_index.saturating_sub(1);
             }
             ViewState::Empty | ViewState::QrCode | ViewState::Completing => {}
+            ViewState::VoiceListening | ViewState::VoiceProcessing | ViewState::VoiceResult => {}
         }
     }
 
@@ -460,6 +481,14 @@ impl ViewNavigator {
                 return Some("go_dashboard");
             }
             ViewState::Completing => {}
+            ViewState::VoiceListening | ViewState::VoiceProcessing => {
+                // Can't interact during voice recording/processing
+            }
+            ViewState::VoiceResult => {
+                // Confirm/dismiss voice result, apply action, return to dashboard
+                ctx.state = ViewState::Dashboard;
+                return Some("voice_apply");
+            }
         }
 
         None
@@ -499,6 +528,18 @@ impl ViewNavigator {
                 ctx.state = ViewState::Dashboard;
                 return Some("go_dashboard");
             }
+            ViewState::VoiceListening | ViewState::VoiceProcessing => {
+                // Cancel voice — return to where we came from
+                ctx.state = ctx.voice_return_state.unwrap_or(ViewState::Dashboard);
+                ctx.voice_return_state = None;
+                return Some("voice_cancel");
+            }
+            ViewState::VoiceResult => {
+                // Dismiss voice result without applying
+                ctx.state = ctx.voice_return_state.unwrap_or(ViewState::Dashboard);
+                ctx.voice_return_state = None;
+                return Some("voice_dismiss");
+            }
         }
 
         None
@@ -507,6 +548,31 @@ impl ViewNavigator {
     /// Called when completion animation finishes
     pub fn complete_animation_done(&mut self) {
         self.ctx.state = ViewState::TaskList;
+    }
+
+    /// Enter voice listening mode from any view
+    pub fn enter_voice_mode(&mut self) {
+        self.ctx.voice_return_state = Some(self.ctx.state);
+        self.ctx.voice_elapsed_secs = 0.0;
+        self.ctx.voice_message.clear();
+        self.ctx.state = ViewState::VoiceListening;
+    }
+
+    /// Transition from listening to processing
+    pub fn voice_start_processing(&mut self) {
+        self.ctx.state = ViewState::VoiceProcessing;
+    }
+
+    /// Transition from processing to result display
+    pub fn voice_show_result(&mut self, message: &str) {
+        self.ctx.voice_message = String::from(message);
+        self.ctx.state = ViewState::VoiceResult;
+    }
+
+    /// Cancel voice and return to previous view
+    pub fn voice_cancel(&mut self) {
+        self.ctx.state = self.ctx.voice_return_state.unwrap_or(ViewState::Dashboard);
+        self.ctx.voice_return_state = None;
     }
 
     /// Get render command for current view
@@ -593,6 +659,13 @@ impl ViewNavigator {
             },
             ViewState::ResetWifiConfirm => RenderCommand::ResetWifiConfirm {
                 confirmed: ctx.reset_wifi_confirmed,
+            },
+            ViewState::VoiceListening => RenderCommand::VoiceListening {
+                elapsed_secs: ctx.voice_elapsed_secs,
+            },
+            ViewState::VoiceProcessing => RenderCommand::VoiceProcessing,
+            ViewState::VoiceResult => RenderCommand::VoiceResult {
+                message: ctx.voice_message.clone(),
             },
         }
     }

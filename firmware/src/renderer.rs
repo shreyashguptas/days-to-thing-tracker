@@ -786,6 +786,101 @@ impl Renderer {
         }
     }
 
+    /// Render voice listening view (recording in progress)
+    pub fn render_voice_listening(fb: &mut FrameBuffer, elapsed_secs: f32) {
+        Self::clear(fb);
+
+        let w = fb.width();
+        let h = fb.height();
+
+        // Title
+        Self::draw_text_centered(fb, 8, "LISTENING", theme::ACCENT, 2);
+
+        // Animated waveform visualization (simple bars based on elapsed time)
+        let bar_y: u32 = 40;
+        let bar_count: u32 = 16;
+        let bar_spacing: u32 = 2;
+        let bar_width: u32 = 4;
+        let max_bar_height: u32 = 30;
+        let total_w = bar_count * (bar_width + bar_spacing);
+        let start_x = (w - total_w) / 2;
+
+        // Generate pseudo-waveform based on elapsed time (simple sine-ish pattern)
+        let phase = (elapsed_secs * 8.0) as u32;
+        for i in 0..bar_count {
+            let x = start_x + i * (bar_width + bar_spacing);
+            // Create a ripple effect: bars near center are taller
+            let center_dist = ((i as i32 - bar_count as i32 / 2).unsigned_abs()) as u32;
+            let base_height = max_bar_height.saturating_sub(center_dist * 3);
+            // Animate by varying height with phase
+            let anim_offset = ((i + phase) % 5) as u32;
+            let bar_h = base_height.saturating_sub(anim_offset * 2).max(3);
+            let bar_top = bar_y + (max_bar_height - bar_h) / 2;
+            fb.fill_rect(x, bar_top, bar_width, bar_h, theme::ACCENT);
+        }
+
+        // Timer display
+        let secs = elapsed_secs as u32;
+        let timer_text = alloc::format!("{}s / 5s", secs);
+        Self::draw_text_centered(fb, 78, &timer_text, theme::TEXT_PRIMARY, 1);
+
+        // Progress bar showing time remaining
+        let bar_w = w - 40;
+        let bar_h: u32 = 4;
+        let bar_x: u32 = 20;
+        let prog_y: u32 = 92;
+
+        fb.fill_rect(bar_x, prog_y, bar_w, bar_h, theme::CARD_BORDER);
+        let fill_w = ((bar_w as f32) * (elapsed_secs / 5.0).min(1.0)) as u32;
+        fb.fill_rect(bar_x, prog_y, fill_w, bar_h, theme::ACCENT);
+
+        // Hint
+        Self::draw_text_centered(fb, h - 10, "release to send", theme::TEXT_MUTED, 1);
+    }
+
+    /// Render voice processing view (uploading and waiting for AI response)
+    pub fn render_voice_processing(fb: &mut FrameBuffer) {
+        Self::clear(fb);
+
+        let h = fb.height();
+
+        Self::draw_text_centered(fb, 20, "Processing", theme::TEXT_PRIMARY, 2);
+
+        // Spinner animation - draw three dots
+        Self::draw_text_centered(fb, 55, "...", theme::ACCENT, 2);
+
+        Self::draw_text_centered(fb, 80, "Sending to server", theme::TEXT_MUTED, 1);
+
+        Self::draw_text_centered(fb, h - 10, "long press: cancel", theme::TEXT_MUTED, 1);
+    }
+
+    /// Render voice result view (show AI response and pending action)
+    pub fn render_voice_result(fb: &mut FrameBuffer, message: &str) {
+        Self::clear(fb);
+
+        let h = fb.height();
+
+        // Header
+        Self::draw_pill(fb, 4, "VOICE", theme::TEXT_PRIMARY, theme::ACCENT, 1);
+
+        // Response message (word-wrapped)
+        let lines = wrap_text(message, 24);
+        let start_y: u32 = 20;
+        for (i, line) in lines.iter().take(6).enumerate() {
+            Self::draw_text_centered(
+                fb,
+                start_y + (i as u32 * 10),
+                line,
+                theme::TEXT_PRIMARY,
+                1,
+            );
+        }
+
+        // Action buttons
+        Self::draw_text_centered(fb, h - 22, "press: confirm", theme::SUCCESS, 1);
+        Self::draw_text_centered(fb, h - 10, "long press: cancel", theme::TEXT_MUTED, 1);
+    }
+
     /// Render station mode "connected" splash
     pub fn render_connected(fb: &mut FrameBuffer, ssid: &str, url: &str) {
         Self::clear(fb);

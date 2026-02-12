@@ -3,6 +3,7 @@
 /// Standalone embedded firmware for XIAO ESP32-C6 with:
 /// - ST7735 160x128 TFT display via SPI
 /// - KY-040 rotary encoder for navigation
+/// - INMP441 I2S microphone for voice commands
 /// - WiFi Station mode (joins home WiFi) with SoftAP provisioning fallback
 /// - JSON storage on LittleFS
 extern crate alloc;
@@ -34,11 +35,13 @@ mod dns;
 mod encoder;
 mod fonts;
 mod http_server;
+mod microphone;
 mod models;
 mod renderer;
 mod storage;
 mod theme;
 mod views;
+mod voice;
 mod wifi;
 
 use display::FrameBuffer;
@@ -69,7 +72,7 @@ fn main() {
     let mosi = peripherals.pins.gpio18;  // D10 - SPI MOSI
     let cs = peripherals.pins.gpio21;    // D3 - Chip select
     let dc = PinDriver::output(peripherals.pins.gpio22).unwrap();  // D4 - Data/command
-    let rst = PinDriver::output(peripherals.pins.gpio23).unwrap(); // D5 - Reset
+    // GPIO23 (D5) repurposed for I2S SD — display RST tied HIGH via 10K pull-up resistor
 
     let spi_driver = SpiDeviceDriver::new_single(
         spi,
@@ -84,8 +87,9 @@ fn main() {
 
     let spi_iface = SPIInterface::new(spi_driver, dc);
 
+    // No reset pin — GPIO23 repurposed for I2S microphone data line.
+    // Hardware RST is tied HIGH via pull-up, keeping display always active.
     let mut hw_display = Builder::new(ST7735s, spi_iface)
-        .reset_pin(rst)
         .invert_colors(ColorInversion::Inverted)
         .orientation(Orientation::new().rotate(Rotation::Deg90))
         .init(&mut FreeRtos)
@@ -105,6 +109,17 @@ fn main() {
     )
     .unwrap();
     log::info!("Encoder initialized");
+
+    // === Initialize I2S Microphone ===
+    log::info!("Initializing I2S microphone...");
+    let mut i2s_driver = microphone::init_i2s_microphone(
+        peripherals.i2s0,
+        peripherals.pins.gpio16,  // D6 - I2S BCLK
+        peripherals.pins.gpio23,  // D5 - I2S SD (repurposed from display RST)
+        peripherals.pins.gpio17,  // D7 - I2S WS
+    )
+    .unwrap();
+    log::info!("I2S microphone initialized");
 
     // === Create framebuffer ===
     let mut fb = FrameBuffer::new();
@@ -257,6 +272,14 @@ fn main() {
     let mut last_idle_check = Instant::now();
     let mut needs_render = true;
 
+    // Voice state tracking
+    let mut audio_buf = microphone::AudioBuffer::new();
+    let mut voice_recording = false;
+    let mut voice_record_start: Option<Instant> = None;
+    let mut voice_action: Option<voice::VoiceAction> = None;
+    let mut voice_result_shown_at: Option<Instant> = None;
+    let is_station_mode = wifi_mode.is_station();
+
     loop {
         // Poll encoder
         if let Some(event) = enc.poll() {
@@ -271,14 +294,130 @@ fn main() {
                 }
                 EncoderEvent::ShortPress => nav.handle_press(),
                 EncoderEvent::LongPress => nav.handle_long_press(),
+                EncoderEvent::VoiceStart => {
+                    // Only enable voice in Station mode (needs internet)
+                    if is_station_mode && nav.ctx.state != ViewState::Completing {
+                        log::info!("Voice recording started");
+                        nav.enter_voice_mode();
+                        audio_buf.clear();
+                        voice_recording = true;
+                        voice_record_start = Some(Instant::now());
+                        i2s_driver.rx_enable().ok(); // Start I2S RX channel
+                    }
+                    None
+                }
+                EncoderEvent::VoiceStop => {
+                    if voice_recording {
+                        log::info!("Voice recording stopped ({:.1}s)", audio_buf.duration_secs());
+                        voice_recording = false;
+                        i2s_driver.rx_disable().ok(); // Stop I2S RX channel
+
+                        // Transition to processing
+                        nav.voice_start_processing();
+                        needs_render = true;
+
+                        // Encode WAV and send to server
+                        let wav_data = audio_buf.to_wav();
+                        let task_context = {
+                            let s = storage.lock().unwrap();
+                            let tasks = s.get_all_tasks(true);
+                            voice::build_task_context(&tasks)
+                        };
+
+                        match voice::send_audio_to_server(&wav_data, &task_context) {
+                            Ok(action) => {
+                                log::info!("Voice action: {:?}", action);
+                                let message = action.message.clone();
+                                voice_action = Some(action);
+                                nav.voice_show_result(&message);
+                                voice_result_shown_at = Some(Instant::now());
+                            }
+                            Err(e) => {
+                                log::error!("Voice server error: {}", e);
+                                nav.voice_show_result(&alloc::format!("Error: {}", e));
+                                voice_action = None;
+                                voice_result_shown_at = Some(Instant::now());
+                            }
+                        }
+                    }
+                    None
+                }
             };
 
             // Handle actions
             if let Some(action) = action {
-                handle_action(action, &mut nav, &storage, &time_source, &nvs_for_reset);
+                handle_action(
+                    action,
+                    &mut nav,
+                    &storage,
+                    &time_source,
+                    &nvs_for_reset,
+                    &mut voice_action,
+                );
             }
 
             needs_render = true;
+        }
+
+        // === Voice recording: read audio chunks while recording ===
+        if voice_recording {
+            if let Some(start) = voice_record_start {
+                let elapsed = start.elapsed().as_secs_f32();
+                nav.ctx.voice_elapsed_secs = elapsed;
+
+                // Read audio data from I2S
+                if let Err(e) = microphone::record_chunk(&mut i2s_driver, &mut audio_buf) {
+                    log::error!("I2S read error: {}", e);
+                }
+
+                // Auto-stop after max recording time
+                if elapsed >= config::VOICE_MAX_RECORD_SECS as f32 {
+                    log::info!("Voice recording auto-stopped ({}s limit)", config::VOICE_MAX_RECORD_SECS);
+                    voice_recording = false;
+                    i2s_driver.rx_disable().ok(); // Stop I2S RX channel
+
+                    nav.voice_start_processing();
+
+                    let wav_data = audio_buf.to_wav();
+                    let task_context = {
+                        let s = storage.lock().unwrap();
+                        let tasks = s.get_all_tasks(true);
+                        voice::build_task_context(&tasks)
+                    };
+
+                    match voice::send_audio_to_server(&wav_data, &task_context) {
+                        Ok(action) => {
+                            log::info!("Voice action: {:?}", action);
+                            let message = action.message.clone();
+                            voice_action = Some(action);
+                            nav.voice_show_result(&message);
+                            voice_result_shown_at = Some(Instant::now());
+                        }
+                        Err(e) => {
+                            log::error!("Voice server error: {}", e);
+                            nav.voice_show_result(&alloc::format!("Error: {}", e));
+                            voice_action = None;
+                            voice_result_shown_at = Some(Instant::now());
+                        }
+                    }
+                }
+
+                needs_render = true;
+            }
+        }
+
+        // === Voice result auto-dismiss timeout ===
+        if nav.ctx.state == ViewState::VoiceResult {
+            if let Some(shown_at) = voice_result_shown_at {
+                if shown_at.elapsed().as_secs() >= config::VOICE_RESULT_TIMEOUT_SECS {
+                    log::info!("Voice result auto-dismissed");
+                    nav.voice_cancel();
+                    voice_action = None;
+                    voice_result_shown_at = None;
+                    reload_data(&mut nav, &storage, &time_source);
+                    needs_render = true;
+                }
+            }
         }
 
         // Render if state changed
@@ -313,10 +452,93 @@ fn handle_action(
     storage: &SharedStorage,
     time_source: &SharedTime,
     nvs_partition: &Option<EspDefaultNvsPartition>,
+    voice_action: &mut Option<voice::VoiceAction>,
 ) {
     let today = get_today(time_source);
 
     match action {
+        "voice_apply" => {
+            // Apply the voice command action to storage
+            if let Some(ref va) = voice_action.take() {
+                let now_iso = get_now_iso(time_source);
+                match va.action.as_str() {
+                    "create" => {
+                        let (rec_type, rec_value) = va.recurrence();
+                        let days_offset = va.recurrence_days.unwrap_or(1) as i64;
+                        let next_due = today + chrono::Duration::days(days_offset);
+                        let mut s = storage.lock().unwrap();
+                        s.create_task(
+                            va.task_name.clone(),
+                            rec_type,
+                            rec_value,
+                            next_due.format("%Y-%m-%d").to_string(),
+                            &now_iso,
+                        );
+                        log::info!("Voice: created task '{}'", va.task_name);
+                    }
+                    "complete" => {
+                        if let Some(task_id) = va.task_id {
+                            let mut s = storage.lock().unwrap();
+                            s.complete_task(task_id, &now_iso, today);
+                            log::info!("Voice: completed task id={}", task_id);
+                        } else {
+                            // Try to find task by name (case-insensitive match)
+                            let s = storage.lock().unwrap();
+                            let tasks = s.get_all_tasks(true);
+                            let name_lower: String = va.task_name.chars().map(|c| c.to_ascii_lowercase()).collect();
+                            if let Some(task) = tasks.iter().find(|t| {
+                                let t_lower: String = t.name.chars().map(|c| c.to_ascii_lowercase()).collect();
+                                t_lower.contains(&name_lower[..])
+                            }) {
+                                let task_id = task.id;
+                                drop(s);
+                                let mut s = storage.lock().unwrap();
+                                s.complete_task(task_id, &now_iso, today);
+                                log::info!("Voice: completed task '{}' (id={})", va.task_name, task_id);
+                            }
+                        }
+                    }
+                    "delete" => {
+                        if let Some(task_id) = va.task_id {
+                            let mut s = storage.lock().unwrap();
+                            s.delete_task(task_id);
+                            log::info!("Voice: deleted task id={}", task_id);
+                        }
+                    }
+                    "update" => {
+                        if let Some(task_id) = va.task_id {
+                            let (rec_type, rec_value) = va.recurrence();
+                            let name = if va.task_name.is_empty() {
+                                None
+                            } else {
+                                Some(va.task_name.clone())
+                            };
+                            let now_iso = get_now_iso(time_source);
+                            let mut s = storage.lock().unwrap();
+                            s.update_task(
+                                task_id,
+                                name,
+                                Some(rec_type),
+                                Some(rec_value),
+                                None,
+                                &now_iso,
+                            );
+                            log::info!("Voice: updated task id={}", task_id);
+                        }
+                    }
+                    _ => {
+                        log::info!("Voice: no action to apply (action='{}')", va.action);
+                    }
+                }
+            }
+            // Reload data and go to dashboard
+            reload_data(nav, storage, time_source);
+            nav.ctx.state = ViewState::Dashboard;
+        }
+        "voice_cancel" | "voice_dismiss" => {
+            *voice_action = None;
+            reload_data(nav, storage, time_source);
+        }
         "complete" => {
             if let Some(task) = nav.ctx.current_task() {
                 let task_id = task.id;
@@ -501,6 +723,15 @@ fn render_current_view(
         }
         RenderCommand::ResetWifiConfirm { confirmed } => {
             Renderer::render_reset_wifi_confirm(fb, confirmed);
+        }
+        RenderCommand::VoiceListening { elapsed_secs } => {
+            Renderer::render_voice_listening(fb, elapsed_secs);
+        }
+        RenderCommand::VoiceProcessing => {
+            Renderer::render_voice_processing(fb);
+        }
+        RenderCommand::VoiceResult { ref message } => {
+            Renderer::render_voice_result(fb, message);
         }
     }
 }

@@ -10,8 +10,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-/// Long press threshold in seconds
+/// Long press threshold in seconds (back/escape)
 const LONG_PRESS_TIME: f64 = 0.5;
+
+/// Voice trigger threshold in seconds (hold > 1s to start voice recording)
+const VOICE_TRIGGER_TIME: f64 = 1.0;
 
 /// Debounce time for button in seconds
 const BUTTON_DEBOUNCE: f64 = 0.2;
@@ -23,6 +26,10 @@ pub enum EncoderEvent {
     CounterClockwise,
     ShortPress,
     LongPress,
+    /// Button held past voice threshold — start recording
+    VoiceStart,
+    /// Button released after VoiceStart — stop recording
+    VoiceStop,
 }
 
 /// Rotary encoder with button and backlight control
@@ -36,6 +43,8 @@ pub struct Encoder<'d, CLK: Pin, DT: Pin, SW: Pin, BL: Pin> {
     last_button_time: Instant,
     last_activity: Instant,
     backlight_on: Arc<AtomicBool>,
+    /// Whether VoiceStart has been emitted for the current button press
+    voice_triggered: bool,
 }
 
 impl<'d, CLK: InputPin + OutputPin, DT: InputPin + OutputPin, SW: InputPin + OutputPin, BL: OutputPin> Encoder<'d, CLK, DT, SW, BL> {
@@ -71,6 +80,7 @@ impl<'d, CLK: InputPin + OutputPin, DT: InputPin + OutputPin, SW: InputPin + Out
             last_button_time: now,
             last_activity: now,
             backlight_on,
+            voice_triggered: false,
         })
     }
 
@@ -101,11 +111,30 @@ impl<'d, CLK: InputPin + OutputPin, DT: InputPin + OutputPin, SW: InputPin + Out
             // Button just pressed
             (true, None) => {
                 self.button_press_time = Some(now);
+                self.voice_triggered = false;
                 self.record_activity();
+            }
+            // Button still held — check for voice trigger
+            (true, Some(press_time)) => {
+                if !self.voice_triggered {
+                    let duration = now.duration_since(press_time).as_secs_f64();
+                    if duration >= VOICE_TRIGGER_TIME {
+                        self.voice_triggered = true;
+                        self.record_activity();
+                        return Some(EncoderEvent::VoiceStart);
+                    }
+                }
             }
             // Button just released
             (false, Some(press_time)) => {
                 self.button_press_time = None;
+
+                // If voice was triggered, emit VoiceStop instead of press events
+                if self.voice_triggered {
+                    self.voice_triggered = false;
+                    self.last_button_time = now;
+                    return Some(EncoderEvent::VoiceStop);
+                }
 
                 // Debounce check
                 if now.duration_since(self.last_button_time).as_secs_f64() < BUTTON_DEBOUNCE {
