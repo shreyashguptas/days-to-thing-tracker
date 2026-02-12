@@ -794,7 +794,7 @@ impl Renderer {
         let h = fb.height();
 
         // Title
-        Self::draw_text_centered(fb, 8, "LISTENING", theme::ACCENT, 2);
+        Self::draw_text_centered(fb, 8, "RECORDING", theme::URGENCY_OVERDUE, 2);
 
         // Animated waveform visualization (simple bars based on elapsed time)
         let bar_y: u32 = 40;
@@ -816,26 +816,22 @@ impl Renderer {
             let anim_offset = ((i + phase) % 5) as u32;
             let bar_h = base_height.saturating_sub(anim_offset * 2).max(3);
             let bar_top = bar_y + (max_bar_height - bar_h) / 2;
-            fb.fill_rect(x, bar_top, bar_width, bar_h, theme::ACCENT);
+            fb.fill_rect(x, bar_top, bar_width, bar_h, theme::URGENCY_OVERDUE);
         }
 
-        // Timer display
+        // Elapsed timer
         let secs = elapsed_secs as u32;
-        let timer_text = alloc::format!("{}s / 5s", secs);
-        Self::draw_text_centered(fb, 78, &timer_text, theme::TEXT_PRIMARY, 1);
-
-        // Progress bar showing time remaining
-        let bar_w = w - 40;
-        let bar_h: u32 = 4;
-        let bar_x: u32 = 20;
-        let prog_y: u32 = 92;
-
-        fb.fill_rect(bar_x, prog_y, bar_w, bar_h, theme::CARD_BORDER);
-        let fill_w = ((bar_w as f32) * (elapsed_secs / 5.0).min(1.0)) as u32;
-        fb.fill_rect(bar_x, prog_y, fill_w, bar_h, theme::ACCENT);
+        let mins = secs / 60;
+        let timer_text = if mins > 0 {
+            alloc::format!("{}:{:02}", mins, secs % 60)
+        } else {
+            alloc::format!("{}s", secs)
+        };
+        Self::draw_text_centered(fb, 80, &timer_text, theme::TEXT_PRIMARY, 2);
 
         // Hint
-        Self::draw_text_centered(fb, h - 10, "release to send", theme::TEXT_MUTED, 1);
+        Self::draw_text_centered(fb, h - 22, "Describe your task", theme::TEXT_MUTED, 1);
+        Self::draw_text_centered(fb, h - 10, "press to stop", theme::ACCENT, 1);
     }
 
     /// Render voice processing view (uploading and waiting for AI response)
@@ -861,7 +857,7 @@ impl Renderer {
         let h = fb.height();
 
         // Header
-        Self::draw_pill(fb, 4, "VOICE", theme::TEXT_PRIMARY, theme::ACCENT, 1);
+        Self::draw_pill(fb, 4, "NEW TASK", theme::TEXT_PRIMARY, theme::ACCENT, 1);
 
         // Response message (word-wrapped)
         let lines = wrap_text(message, 24);

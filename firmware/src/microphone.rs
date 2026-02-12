@@ -29,11 +29,12 @@ pub struct AudioBuffer {
 }
 
 impl AudioBuffer {
-    /// Create a new empty audio buffer pre-allocated for max recording duration
+    /// Create a new empty audio buffer pre-allocated for initial recording capacity.
+    /// The Vec will grow beyond this if the user records longer.
     pub fn new() -> Self {
-        // 16 kHz * 2 bytes * max_seconds = bytes needed
+        // 16 kHz * 2 bytes * initial_seconds = initial capacity
         let max_bytes =
-            config::VOICE_SAMPLE_RATE * 2 * config::VOICE_MAX_RECORD_SECS;
+            config::VOICE_SAMPLE_RATE * 2 * config::VOICE_INITIAL_BUF_SECS;
         Self {
             pcm_data: Vec::with_capacity(max_bytes as usize),
             sample_rate: config::VOICE_SAMPLE_RATE,

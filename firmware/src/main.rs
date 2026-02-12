@@ -307,89 +307,31 @@ fn main() {
                     None
                 }
                 EncoderEvent::VoiceStop => {
-                    if voice_recording {
-                        log::info!("Voice recording stopped ({:.1}s)", audio_buf.duration_secs());
-                        voice_recording = false;
-                        i2s_driver.rx_disable().ok(); // Stop I2S RX channel
-
-                        // Transition to processing
-                        nav.voice_start_processing();
-                        needs_render = true;
-
-                        // Encode WAV and send to server
-                        let wav_data = audio_buf.to_wav();
-                        let task_context = {
-                            let s = storage.lock().unwrap();
-                            let tasks = s.get_all_tasks(true);
-                            voice::build_task_context(&tasks)
-                        };
-
-                        match voice::send_audio_to_server(&wav_data, &task_context) {
-                            Ok(action) => {
-                                log::info!("Voice action: {:?}", action);
-                                let message = action.message.clone();
-                                voice_action = Some(action);
-                                nav.voice_show_result(&message);
-                                voice_result_shown_at = Some(Instant::now());
-                            }
-                            Err(e) => {
-                                log::error!("Voice server error: {}", e);
-                                nav.voice_show_result(&alloc::format!("Error: {}", e));
-                                voice_action = None;
-                                voice_result_shown_at = Some(Instant::now());
-                            }
-                        }
-                    }
+                    // Ignore — this is just the release after the initial long press.
+                    // Recording continues until the user does a short press.
                     None
                 }
             };
 
             // Handle actions
             if let Some(action) = action {
-                handle_action(
-                    action,
-                    &mut nav,
-                    &storage,
-                    &time_source,
-                    &nvs_for_reset,
-                    &mut voice_action,
-                );
-            }
-
-            needs_render = true;
-        }
-
-        // === Voice recording: read audio chunks while recording ===
-        if voice_recording {
-            if let Some(start) = voice_record_start {
-                let elapsed = start.elapsed().as_secs_f32();
-                nav.ctx.voice_elapsed_secs = elapsed;
-
-                // Read audio data from I2S
-                if let Err(e) = microphone::record_chunk(&mut i2s_driver, &mut audio_buf) {
-                    log::error!("I2S read error: {}", e);
-                }
-
-                // Auto-stop after max recording time
-                if elapsed >= config::VOICE_MAX_RECORD_SECS as f32 {
-                    log::info!("Voice recording auto-stopped ({}s limit)", config::VOICE_MAX_RECORD_SECS);
+                if action == "voice_stop_recording" && voice_recording {
+                    // Stop recording, process audio
+                    log::info!("Voice recording stopped ({:.1}s)", audio_buf.duration_secs());
                     voice_recording = false;
                     i2s_driver.rx_disable().ok(); // Stop I2S RX channel
 
-                    nav.voice_start_processing();
+                    // Render processing state before the blocking HTTP call
+                    render_current_view(&mut fb, &nav, &storage, &time_source);
+                    flush_to_display(&mut hw_display, &fb);
 
+                    // Encode WAV and send to server
                     let wav_data = audio_buf.to_wav();
-                    let task_context = {
-                        let s = storage.lock().unwrap();
-                        let tasks = s.get_all_tasks(true);
-                        voice::build_task_context(&tasks)
-                    };
-
-                    match voice::send_audio_to_server(&wav_data, &task_context) {
-                        Ok(action) => {
-                            log::info!("Voice action: {:?}", action);
-                            let message = action.message.clone();
-                            voice_action = Some(action);
+                    match voice::send_audio_to_server(&wav_data, "") {
+                        Ok(va) => {
+                            log::info!("Voice action: {:?}", va);
+                            let message = va.message.clone();
+                            voice_action = Some(va);
                             nav.voice_show_result(&message);
                             voice_result_shown_at = Some(Instant::now());
                         }
@@ -400,6 +342,29 @@ fn main() {
                             voice_result_shown_at = Some(Instant::now());
                         }
                     }
+                } else {
+                    handle_action(
+                        action,
+                        &mut nav,
+                        &storage,
+                        &time_source,
+                        &nvs_for_reset,
+                        &mut voice_action,
+                    );
+                }
+            }
+
+            needs_render = true;
+        }
+
+        // === Voice recording: read audio chunks while recording ===
+        if voice_recording {
+            if let Some(start) = voice_record_start {
+                nav.ctx.voice_elapsed_secs = start.elapsed().as_secs_f32();
+
+                // Read audio data from I2S
+                if let Err(e) = microphone::record_chunk(&mut i2s_driver, &mut audio_buf) {
+                    log::error!("I2S read error: {}", e);
                 }
 
                 needs_render = true;
@@ -458,77 +423,24 @@ fn handle_action(
 
     match action {
         "voice_apply" => {
-            // Apply the voice command action to storage
+            // Apply the voice command — create a new task
             if let Some(ref va) = voice_action.take() {
-                let now_iso = get_now_iso(time_source);
-                match va.action.as_str() {
-                    "create" => {
-                        let (rec_type, rec_value) = va.recurrence();
-                        let days_offset = va.recurrence_days.unwrap_or(1) as i64;
-                        let next_due = today + chrono::Duration::days(days_offset);
-                        let mut s = storage.lock().unwrap();
-                        s.create_task(
-                            va.task_name.clone(),
-                            rec_type,
-                            rec_value,
-                            next_due.format("%Y-%m-%d").to_string(),
-                            &now_iso,
-                        );
-                        log::info!("Voice: created task '{}'", va.task_name);
-                    }
-                    "complete" => {
-                        if let Some(task_id) = va.task_id {
-                            let mut s = storage.lock().unwrap();
-                            s.complete_task(task_id, &now_iso, today);
-                            log::info!("Voice: completed task id={}", task_id);
-                        } else {
-                            // Try to find task by name (case-insensitive match)
-                            let s = storage.lock().unwrap();
-                            let tasks = s.get_all_tasks(true);
-                            let name_lower: String = va.task_name.chars().map(|c| c.to_ascii_lowercase()).collect();
-                            if let Some(task) = tasks.iter().find(|t| {
-                                let t_lower: String = t.name.chars().map(|c| c.to_ascii_lowercase()).collect();
-                                t_lower.contains(&name_lower[..])
-                            }) {
-                                let task_id = task.id;
-                                drop(s);
-                                let mut s = storage.lock().unwrap();
-                                s.complete_task(task_id, &now_iso, today);
-                                log::info!("Voice: completed task '{}' (id={})", va.task_name, task_id);
-                            }
-                        }
-                    }
-                    "delete" => {
-                        if let Some(task_id) = va.task_id {
-                            let mut s = storage.lock().unwrap();
-                            s.delete_task(task_id);
-                            log::info!("Voice: deleted task id={}", task_id);
-                        }
-                    }
-                    "update" => {
-                        if let Some(task_id) = va.task_id {
-                            let (rec_type, rec_value) = va.recurrence();
-                            let name = if va.task_name.is_empty() {
-                                None
-                            } else {
-                                Some(va.task_name.clone())
-                            };
-                            let now_iso = get_now_iso(time_source);
-                            let mut s = storage.lock().unwrap();
-                            s.update_task(
-                                task_id,
-                                name,
-                                Some(rec_type),
-                                Some(rec_value),
-                                None,
-                                &now_iso,
-                            );
-                            log::info!("Voice: updated task id={}", task_id);
-                        }
-                    }
-                    _ => {
-                        log::info!("Voice: no action to apply (action='{}')", va.action);
-                    }
+                if va.action == "create" && !va.task_name.is_empty() {
+                    let now_iso = get_now_iso(time_source);
+                    let (rec_type, rec_value) = va.recurrence();
+                    let days_offset = va.recurrence_days.unwrap_or(1) as i64;
+                    let next_due = today + chrono::Duration::days(days_offset);
+                    let mut s = storage.lock().unwrap();
+                    s.create_task(
+                        va.task_name.clone(),
+                        rec_type,
+                        rec_value,
+                        next_due.format("%Y-%m-%d").to_string(),
+                        &now_iso,
+                    );
+                    log::info!("Voice: created task '{}'", va.task_name);
+                } else {
+                    log::info!("Voice: nothing to create (action='{}', name='{}')", va.action, va.task_name);
                 }
             }
             // Reload data and go to dashboard

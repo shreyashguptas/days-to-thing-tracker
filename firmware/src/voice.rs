@@ -2,12 +2,11 @@
 ///
 /// Sends recorded WAV audio to a voice processing server that performs:
 /// 1. Speech-to-text (Whisper)
-/// 2. Intent parsing (LLM)
-/// 3. Returns a structured JSON action
+/// 2. Intent parsing (LLM) — extracts task name and recurrence
+/// 3. Returns a structured JSON for task creation
 extern crate alloc;
 
 use alloc::string::String;
-use alloc::vec::Vec;
 
 use esp_idf_svc::http::client::{Configuration as HttpClientConfig, EspHttpConnection};
 use serde::{Deserialize, Serialize};
@@ -15,23 +14,25 @@ use serde::{Deserialize, Serialize};
 use crate::config;
 use crate::models::RecurrenceType;
 
-/// Voice command action returned by the server
+/// Voice command action returned by the server (task creation only)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceAction {
-    /// Action type: "create", "update", "complete", "delete", "none"
+    /// Action type: "create" or "none"
+    #[serde(default = "default_action")]
     pub action: String,
-    /// Task name (for create/update)
+    /// Task name extracted from speech
     #[serde(default)]
     pub task_name: String,
-    /// Recurrence in days (for create/update) - server converts to appropriate type
+    /// Recurrence in days (e.g. 3 = every 3 days, 7 = weekly, 30 = monthly)
     #[serde(default)]
     pub recurrence_days: Option<u32>,
     /// Human-readable message to show on screen
     #[serde(default)]
     pub message: String,
-    /// Task ID to act on (for update/complete/delete, matched by server or name)
-    #[serde(default)]
-    pub task_id: Option<u32>,
+}
+
+fn default_action() -> String {
+    String::from("none")
 }
 
 impl VoiceAction {
@@ -60,7 +61,7 @@ impl VoiceAction {
 /// Response is JSON matching the VoiceAction struct.
 pub fn send_audio_to_server(
     wav_data: &[u8],
-    task_context: &str,
+    _task_context: &str,
 ) -> Result<VoiceAction, VoiceError> {
     log::info!(
         "Sending {}KB audio to voice server: {}",
@@ -68,13 +69,7 @@ pub fn send_audio_to_server(
         config::VOICE_SERVER_URL
     );
 
-    // Build the URL with task context as query param
-    let url = if task_context.is_empty() {
-        String::from(config::VOICE_SERVER_URL)
-    } else {
-        // URL-encode is overkill here; the server handles raw query strings
-        alloc::format!("{}?context={}", config::VOICE_SERVER_URL, urlencode(task_context))
-    };
+    let url = String::from(config::VOICE_SERVER_URL);
 
     let http_config = HttpClientConfig {
         buffer_size: Some(2048),
@@ -150,55 +145,6 @@ pub fn send_audio_to_server(
     Ok(action)
 }
 
-/// Build a task context string from the current task list for the server.
-/// This helps the LLM understand what tasks exist for update/complete commands.
-pub fn build_task_context(tasks: &[crate::models::Task]) -> String {
-    if tasks.is_empty() {
-        return String::from("No tasks exist yet.");
-    }
-
-    let mut ctx = String::from("Current tasks: ");
-    for (i, task) in tasks.iter().take(20).enumerate() {
-        if i > 0 {
-            ctx.push_str(", ");
-        }
-        ctx.push_str(&alloc::format!(
-            "{}(id={},every {} {})",
-            task.name,
-            task.id,
-            task.recurrence_value,
-            task.recurrence_type.as_str()
-        ));
-    }
-    ctx
-}
-
-/// Minimal URL encoding for the context query parameter
-fn urlencode(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() * 2);
-    for c in s.bytes() {
-        match c {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                result.push(c as char);
-            }
-            b' ' => result.push('+'),
-            _ => {
-                result.push('%');
-                result.push(to_hex_digit(c >> 4));
-                result.push(to_hex_digit(c & 0x0F));
-            }
-        }
-    }
-    result
-}
-
-fn to_hex_digit(n: u8) -> char {
-    match n {
-        0..=9 => (b'0' + n) as char,
-        10..=15 => (b'A' + n - 10) as char,
-        _ => '0',
-    }
-}
 
 /// Errors that can occur during voice processing
 #[derive(Debug)]

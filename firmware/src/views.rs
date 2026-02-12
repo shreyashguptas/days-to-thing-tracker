@@ -481,8 +481,13 @@ impl ViewNavigator {
                 return Some("go_dashboard");
             }
             ViewState::Completing => {}
-            ViewState::VoiceListening | ViewState::VoiceProcessing => {
-                // Can't interact during voice recording/processing
+            ViewState::VoiceListening => {
+                // Short press stops recording and sends to server
+                ctx.state = ViewState::VoiceProcessing;
+                return Some("voice_stop_recording");
+            }
+            ViewState::VoiceProcessing => {
+                // Can't interact while processing
             }
             ViewState::VoiceResult => {
                 // Confirm/dismiss voice result, apply action, return to dashboard
