@@ -56,10 +56,14 @@ pub const SPI_FREQ_HZ: u32 = 32_000_000;
 
 // Voice control
 pub const VOICE_SERVER_URL: &str = "http://192.168.1.100:8000/voice";  // Local dev server
+pub const VOICE_CHUNK_URL: &str = "http://192.168.1.100:8000/voice/chunk";  // Chunk transcription
+pub const VOICE_COMPLETE_URL: &str = "http://192.168.1.100:8000/voice/complete";  // Finalize with LLM
 pub const VOICE_SAMPLE_RATE: u32 = 16_000;
 pub const VOICE_TRIGGER_MS: u64 = 1000;  // Hold encoder > 1s to trigger voice
 pub const VOICE_RESULT_TIMEOUT_SECS: u64 = 5;  // Auto-dismiss voice result after 5s
-pub const VOICE_INITIAL_BUF_SECS: u32 = 10;  // Pre-allocate buffer for ~10s (grows if needed)
+pub const VOICE_CHUNK_SECS: u32 = 5;  // Send a chunk every 5 seconds (~160KB PCM)
+pub const VOICE_MAX_RECORDING_SECS: u32 = 20;  // Hard limit on recording duration
+pub const VOICE_INITIAL_BUF_SECS: u32 = 5;  // Pre-allocate buffer for one chunk (~160KB)
 
 // I2S audio settings
 pub const I2S_DMA_BUF_COUNT: u32 = 8;

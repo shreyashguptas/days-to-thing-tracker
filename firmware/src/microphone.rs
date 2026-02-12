@@ -57,6 +57,33 @@ impl AudioBuffer {
         self.pcm_data.len() as f32 / (self.sample_rate as f32 * bytes_per_sample as f32)
     }
 
+    /// Generate a 44-byte WAV header for the current PCM data.
+    /// Used by chunked streaming to avoid allocating a full WAV copy —
+    /// write this header first, then stream pcm_data directly.
+    pub fn wav_header(&self) -> Vec<u8> {
+        let data_size = self.pcm_data.len() as u32;
+        let byte_rate =
+            self.sample_rate * self.channels as u32 * (self.bits_per_sample / 8) as u32;
+        let block_align = self.channels * (self.bits_per_sample / 8);
+        let file_size = 36 + data_size;
+
+        let mut hdr = Vec::with_capacity(44);
+        hdr.extend_from_slice(b"RIFF");
+        hdr.extend_from_slice(&file_size.to_le_bytes());
+        hdr.extend_from_slice(b"WAVE");
+        hdr.extend_from_slice(b"fmt ");
+        hdr.extend_from_slice(&16u32.to_le_bytes());
+        hdr.extend_from_slice(&1u16.to_le_bytes());
+        hdr.extend_from_slice(&self.channels.to_le_bytes());
+        hdr.extend_from_slice(&self.sample_rate.to_le_bytes());
+        hdr.extend_from_slice(&byte_rate.to_le_bytes());
+        hdr.extend_from_slice(&block_align.to_le_bytes());
+        hdr.extend_from_slice(&self.bits_per_sample.to_le_bytes());
+        hdr.extend_from_slice(b"data");
+        hdr.extend_from_slice(&data_size.to_le_bytes());
+        hdr
+    }
+
     /// Encode the PCM buffer as a complete WAV file (44-byte header + PCM data)
     pub fn to_wav(&self) -> Vec<u8> {
         let data_size = self.pcm_data.len() as u32;

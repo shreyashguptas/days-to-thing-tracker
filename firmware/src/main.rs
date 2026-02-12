@@ -276,6 +276,8 @@ fn main() {
     let mut audio_buf = microphone::AudioBuffer::new();
     let mut voice_recording = false;
     let mut voice_record_start: Option<Instant> = None;
+    let mut voice_chunk_start: Option<Instant> = None;
+    let mut voice_transcripts: Vec<String> = Vec::new();
     let mut voice_action: Option<voice::VoiceAction> = None;
     let mut voice_result_shown_at: Option<Instant> = None;
     let is_station_mode = wifi_mode.is_station();
@@ -297,11 +299,14 @@ fn main() {
                 EncoderEvent::VoiceStart => {
                     // Only enable voice in Station mode (needs internet)
                     if is_station_mode && nav.ctx.state != ViewState::Completing {
-                        log::info!("Voice recording started");
+                        log::info!("Voice recording started (max {}s, {}s chunks)",
+                            config::VOICE_MAX_RECORDING_SECS, config::VOICE_CHUNK_SECS);
                         nav.enter_voice_mode();
                         audio_buf.clear();
+                        voice_transcripts.clear();
                         voice_recording = true;
                         voice_record_start = Some(Instant::now());
+                        voice_chunk_start = Some(Instant::now());
                         i2s_driver.rx_enable().ok(); // Start I2S RX channel
                     }
                     None
@@ -317,31 +322,54 @@ fn main() {
             if let Some(action) = action {
                 if action == "voice_stop_recording" && voice_recording {
                     // Stop recording, process audio
-                    log::info!("Voice recording stopped ({:.1}s)", audio_buf.duration_secs());
+                    let total_secs = voice_record_start
+                        .map(|s| s.elapsed().as_secs_f32())
+                        .unwrap_or(0.0);
+                    log::info!("Voice recording stopped ({:.1}s total)", total_secs);
                     voice_recording = false;
                     i2s_driver.rx_disable().ok(); // Stop I2S RX channel
 
-                    // Render processing state before the blocking HTTP call
+                    // Render processing state before blocking HTTP calls
                     render_current_view(&mut fb, &nav, &storage, &time_source);
                     flush_to_display(&mut hw_display, &fb);
 
-                    // Encode WAV and send to server
-                    let wav_data = audio_buf.to_wav();
-                    match voice::send_audio_to_server(&wav_data, "") {
-                        Ok(va) => {
-                            log::info!("Voice action: {:?}", va);
-                            let message = va.message.clone();
-                            voice_action = Some(va);
-                            nav.voice_show_result(&message);
-                            voice_result_shown_at = Some(Instant::now());
+                    // Send final chunk if there's audio data in the buffer
+                    if !audio_buf.pcm_data.is_empty() {
+                        match voice::send_chunk_to_server(&audio_buf) {
+                            Ok(transcript) => {
+                                if !transcript.is_empty() {
+                                    voice_transcripts.push(transcript);
+                                }
+                            }
+                            Err(e) => log::error!("Final chunk error: {}", e),
                         }
-                        Err(e) => {
-                            log::error!("Voice server error: {}", e);
-                            nav.voice_show_result(&alloc::format!("Error: {}", e));
-                            voice_action = None;
-                            voice_result_shown_at = Some(Instant::now());
+                        audio_buf.clear();
+                    }
+
+                    // Join all chunk transcripts and finalize with LLM
+                    let full_transcript = voice_transcripts.join(" ");
+                    voice_transcripts.clear();
+                    log::info!("Full transcript: '{}'", full_transcript);
+
+                    if full_transcript.trim().is_empty() {
+                        nav.voice_show_result("No speech detected");
+                        voice_action = None;
+                    } else {
+                        match voice::finalize_voice(&full_transcript) {
+                            Ok(va) => {
+                                log::info!("Voice action: {:?}", va);
+                                let message = va.message.clone();
+                                voice_action = Some(va);
+                                nav.voice_show_result(&message);
+                            }
+                            Err(e) => {
+                                log::error!("Finalize error: {}", e);
+                                nav.voice_show_result(&alloc::format!("Error: {}", e));
+                                voice_action = None;
+                            }
                         }
                     }
+                    voice_result_shown_at = Some(Instant::now());
                 } else {
                     handle_action(
                         action,
@@ -360,11 +388,97 @@ fn main() {
         // === Voice recording: read audio chunks while recording ===
         if voice_recording {
             if let Some(start) = voice_record_start {
-                nav.ctx.voice_elapsed_secs = start.elapsed().as_secs_f32();
+                let total_elapsed = start.elapsed().as_secs_f32();
+                nav.ctx.voice_elapsed_secs = total_elapsed;
 
                 // Read audio data from I2S
                 if let Err(e) = microphone::record_chunk(&mut i2s_driver, &mut audio_buf) {
                     log::error!("I2S read error: {}", e);
+                }
+
+                // Check if current chunk is full (VOICE_CHUNK_SECS elapsed)
+                let chunk_elapsed = voice_chunk_start
+                    .map(|s| s.elapsed().as_secs_f32())
+                    .unwrap_or(0.0);
+
+                if chunk_elapsed >= config::VOICE_CHUNK_SECS as f32 {
+                    // Pause I2S while we send the chunk (blocking HTTP call)
+                    i2s_driver.rx_disable().ok();
+
+                    log::info!(
+                        "Sending chunk ({:.1}s chunk, {:.1}s total, {}KB)",
+                        chunk_elapsed,
+                        total_elapsed,
+                        audio_buf.pcm_data.len() / 1024
+                    );
+
+                    // Send chunk to server for transcription
+                    match voice::send_chunk_to_server(&audio_buf) {
+                        Ok(transcript) => {
+                            log::info!("Chunk transcript: '{}'", transcript);
+                            if !transcript.is_empty() {
+                                voice_transcripts.push(transcript);
+                            }
+                        }
+                        Err(e) => log::error!("Chunk send error: {}", e),
+                    }
+
+                    // Clear buffer and restart chunk timer
+                    audio_buf.clear();
+                    voice_chunk_start = Some(Instant::now());
+
+                    // Resume recording
+                    i2s_driver.rx_enable().ok();
+                }
+
+                // Auto-stop at max recording duration
+                if total_elapsed >= config::VOICE_MAX_RECORDING_SECS as f32 {
+                    log::info!("Voice max duration reached ({}s)", config::VOICE_MAX_RECORDING_SECS);
+                    voice_recording = false;
+                    i2s_driver.rx_disable().ok();
+
+                    // Switch to processing view
+                    nav.voice_start_processing();
+                    render_current_view(&mut fb, &nav, &storage, &time_source);
+                    flush_to_display(&mut hw_display, &fb);
+
+                    // Send final chunk
+                    if !audio_buf.pcm_data.is_empty() {
+                        match voice::send_chunk_to_server(&audio_buf) {
+                            Ok(transcript) => {
+                                if !transcript.is_empty() {
+                                    voice_transcripts.push(transcript);
+                                }
+                            }
+                            Err(e) => log::error!("Final chunk error: {}", e),
+                        }
+                        audio_buf.clear();
+                    }
+
+                    // Join transcripts and finalize
+                    let full_transcript = voice_transcripts.join(" ");
+                    voice_transcripts.clear();
+                    log::info!("Full transcript (auto-stop): '{}'", full_transcript);
+
+                    if full_transcript.trim().is_empty() {
+                        nav.voice_show_result("No speech detected");
+                        voice_action = None;
+                    } else {
+                        match voice::finalize_voice(&full_transcript) {
+                            Ok(va) => {
+                                log::info!("Voice action: {:?}", va);
+                                let message = va.message.clone();
+                                voice_action = Some(va);
+                                nav.voice_show_result(&message);
+                            }
+                            Err(e) => {
+                                log::error!("Finalize error: {}", e);
+                                nav.voice_show_result(&alloc::format!("Error: {}", e));
+                                voice_action = None;
+                            }
+                        }
+                    }
+                    voice_result_shown_at = Some(Instant::now());
                 }
 
                 needs_render = true;

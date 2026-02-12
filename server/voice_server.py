@@ -174,6 +174,76 @@ Output ONLY valid JSON, no markdown, no explanation."""
         }
 
 
+@app.post("/voice/chunk")
+async def process_chunk(request: Request):
+    """
+    Receive a WAV audio chunk from ESP32, transcribe with Whisper only.
+
+    Used for chunked recording: the ESP32 sends 5-second audio chunks during
+    recording. Each chunk is transcribed independently and the transcript text
+    is returned. The ESP32 joins all chunk transcripts and sends the full text
+    to /voice/complete for LLM extraction.
+
+    Body:
+        Raw WAV audio bytes (Content-Type: audio/wav)
+
+    Returns:
+        JSON with "transcript" field (text from this chunk)
+    """
+    if not GROQ_API_KEY:
+        return JSONResponse(
+            status_code=500,
+            content={"transcript": ""},
+        )
+
+    audio_data = await request.body()
+    logger.info(f"Received {len(audio_data)} byte audio chunk")
+
+    if len(audio_data) < 100:
+        return JSONResponse(content={"transcript": ""})
+
+    transcript = await transcribe_audio(audio_data)
+    logger.info(f"Chunk transcript: {transcript}")
+
+    return JSONResponse(content={"transcript": transcript or ""})
+
+
+@app.post("/voice/complete")
+async def complete_voice(request: Request):
+    """
+    Receive the full joined transcript and extract task details with LLM.
+
+    This is the second step of chunked recording: all chunk transcripts have
+    been joined into a single string by the ESP32, and we run the LLM to
+    extract task name and recurrence.
+
+    Body:
+        JSON with "transcript" field (full joined text)
+
+    Returns:
+        JSON with action, task_name, recurrence_days, message
+    """
+    if not GROQ_API_KEY:
+        return JSONResponse(
+            status_code=500,
+            content={"action": "none", "message": "Server error: GROQ_API_KEY not set"},
+        )
+
+    body = await request.json()
+    transcript = body.get("transcript", "").strip()
+    logger.info(f"Complete request with transcript: {transcript}")
+
+    if not transcript:
+        return JSONResponse(
+            content={"action": "none", "message": "No speech detected", "task_name": ""},
+        )
+
+    action = await extract_task(transcript)
+    logger.info(f"Action: {action}")
+
+    return JSONResponse(content=action)
+
+
 @app.get("/health")
 async def health():
     """Health check endpoint."""
