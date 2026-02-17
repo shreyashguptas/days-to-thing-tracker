@@ -18,6 +18,7 @@ pub enum ViewState {
     TaskHistory,
     Settings,
     QrCode,
+    #[allow(dead_code)]
     Empty,
     ResetWifiConfirm,
 }
@@ -180,6 +181,7 @@ pub enum RenderCommand {
     TaskCard {
         task_index: usize,
         total: usize,
+        #[allow(dead_code)]
         filtered: Option<String>,
     },
     BackCard {

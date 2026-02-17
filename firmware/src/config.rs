@@ -4,17 +4,25 @@
 // See docs/pinout.md for wiring diagram
 //
 // Display (ST7735 SPI):
+#[allow(dead_code)]
 pub const PIN_SCK: i32 = 19;      // D8  - SPI clock
+#[allow(dead_code)]
 pub const PIN_MOSI: i32 = 18;     // D10 - SPI MOSI
+#[allow(dead_code)]
 pub const PIN_CS: i32 = 21;       // D3  - Display chip select
+#[allow(dead_code)]
 pub const PIN_DC: i32 = 22;       // D4  - Display data/command
+#[allow(dead_code)]
 pub const PIN_RST: i32 = 23;      // D5  - Display reset
+#[allow(dead_code)]
 pub const PIN_BL: i32 = 20;       // D9  - Display backlight (MISO pin, unused for SPI read)
 //
 // Rotary Encoder (KY-040):
+#[allow(dead_code)]
 pub const PIN_ENC_CLK: i32 = 0;   // D0  - Encoder CLK (A)
+#[allow(dead_code)]
 pub const PIN_ENC_DT: i32 = 1;    // D1  - Encoder DT (B)
-pub const PIN_ENC_SW: i32 = 2;    // D2  - Encoder switch
+pub const PIN_ENC_SW: i32 = 2;    // D2  - Encoder switch (also light sleep wake source)
 
 // Display settings
 pub const DISPLAY_WIDTH: u32 = 160;

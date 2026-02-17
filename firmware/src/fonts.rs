@@ -6,6 +6,7 @@
 /// 5x7 bitmap font width
 pub const FONT_WIDTH: u32 = 5;
 /// 5x7 bitmap font height
+#[allow(dead_code)]
 pub const FONT_HEIGHT: u32 = 7;
 
 /// Large number font dimensions (smoother, friendlier numbers)

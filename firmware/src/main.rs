@@ -126,7 +126,7 @@ fn main() {
         .as_ref()
         .and_then(|nvs_part| wifi::load_wifi_creds(nvs_part));
 
-    let (wifi_mode, _wifi, shared_wifi, _dns_handle): (
+    let (wifi_mode, mut sta_wifi, shared_wifi, _dns_handle): (
         WiFiMode,
         Option<wifi::BlockingWifiHandle>,
         Option<SharedWifi>,
@@ -174,6 +174,7 @@ fn main() {
             FreeRtos::delay_ms(3000);
             unsafe { esp_idf_svc::sys::esp_restart(); }
             // esp_restart() never returns, but we need to satisfy the type checker
+            #[allow(unreachable_code)]
             loop { FreeRtos::delay_ms(1000); }
         }
     } else {
@@ -213,7 +214,9 @@ fn main() {
 
     // === Start HTTP Server ===
     log::info!("Starting HTTP server...");
-    let _server = http_server::start_server(
+    // Server is kept in Option for RAII lifecycle: drop = stop, Some = start
+    #[allow(unused_variables, unused_assignments)]
+    let mut server = Some(http_server::start_server(
         storage.clone(),
         time_source.clone(),
         wifi_mode.ip(),
@@ -221,7 +224,7 @@ fn main() {
         shared_wifi,
         nvs_for_creds.clone(),
     )
-    .unwrap();
+    .unwrap());
     log::info!("HTTP server ready on port {}", config::HTTP_PORT);
 
     // === Initialize View Navigator ===
@@ -299,6 +302,63 @@ fn main() {
             {
                 enc.set_backlight(false);
                 log::info!("Screen off (idle timeout)");
+
+                // Power saving in Station mode: stop WiFi + enter light sleep
+                #[allow(unused_assignments)]
+                if wifi_mode.is_station() {
+                    // Drop HTTP server to free resources
+                    server = None;
+                    log::info!("HTTP server stopped for sleep");
+
+                    // Stop WiFi (powers down radio)
+                    if let Some(ref mut w) = sta_wifi {
+                        let _ = wifi::stop_wifi(w);
+                    }
+
+                    // Enter light sleep — blocks until encoder button (GPIO2) wakes us
+                    enter_light_sleep();
+
+                    // === Woke from light sleep ===
+                    log::info!("Woke from light sleep");
+                    enc.set_backlight(true);
+                    enc.reset_activity();
+
+                    // Restart WiFi
+                    let server_ip = if let Some(ref mut w) = sta_wifi {
+                        match wifi::restart_wifi(w) {
+                            Ok(new_ip) => {
+                                nav.ctx.ap_url = wifi::web_url_from_ip(new_ip);
+                                new_ip
+                            }
+                            Err(e) => {
+                                log::error!("WiFi reconnect failed: {}", e);
+                                wifi_mode.ip()
+                            }
+                        }
+                    } else {
+                        wifi_mode.ip()
+                    };
+
+                    // Restart HTTP server
+                    match http_server::start_server(
+                        storage.clone(),
+                        time_source.clone(),
+                        server_ip,
+                        wifi_mode.clone(),
+                        None,
+                        nvs_for_reset.clone(),
+                    ) {
+                        Ok(s) => {
+                            server = Some(s);
+                            log::info!("HTTP server restarted");
+                        }
+                        Err(e) => {
+                            log::error!("HTTP server restart failed: {}", e);
+                        }
+                    }
+
+                    needs_render = true;
+                }
             }
             last_idle_check = now;
         }
@@ -423,7 +483,7 @@ fn reload_data(nav: &mut ViewNavigator, storage: &SharedStorage, time_source: &S
 fn render_current_view(
     fb: &mut FrameBuffer,
     nav: &ViewNavigator,
-    storage: &SharedStorage,
+    _storage: &SharedStorage,
     time_source: &SharedTime,
 ) {
     let today = get_today(time_source);
@@ -504,6 +564,25 @@ fn render_current_view(
         RenderCommand::ResetWifiConfirm { confirmed } => {
             Renderer::render_reset_wifi_confirm(fb, confirmed);
         }
+    }
+}
+
+/// Enter ESP32-C6 light sleep with GPIO2 (encoder button) as wake source.
+/// Blocks until the button is pressed. All RAM is preserved — wake is instant.
+fn enter_light_sleep() {
+    unsafe {
+        use esp_idf_svc::sys::*;
+
+        // Configure GPIO2 (encoder button) as wakeup source
+        // Button is active-low with pull-up, so wake on LOW level
+        gpio_wakeup_enable(
+            config::PIN_ENC_SW,
+            gpio_int_type_t_GPIO_INTR_LOW_LEVEL,
+        );
+        esp_sleep_enable_gpio_wakeup();
+
+        log::info!("Entering light sleep...");
+        esp_light_sleep_start();
     }
 }
 

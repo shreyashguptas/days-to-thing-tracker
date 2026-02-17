@@ -155,4 +155,9 @@ impl<'d, CLK: InputPin + OutputPin, DT: InputPin + OutputPin, SW: InputPin + Out
     pub fn is_backlight_on(&self) -> bool {
         self.backlight_on.load(Ordering::SeqCst)
     }
+
+    /// Reset activity timer (called after waking from sleep)
+    pub fn reset_activity(&mut self) {
+        self.last_activity = Instant::now();
+    }
 }

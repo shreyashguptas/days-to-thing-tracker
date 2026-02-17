@@ -59,18 +59,74 @@
 ## XIAO ESP32-C6 Board Layout
 
 ```
+            USB-C
+        ┌───────────┐
+D0   ●  │           │  ● 5V
+D1   ●  │           │  ● GND
+D2   ●  │           │  ● 3V3
+D3   ●  │           │  ● D10 (MOSI) ── Display SDA
+D4   ●  │           │  ● D9  (MISO) ── Display BL
+D5   ●  │           │  ● D8  (SCK)  ── Display SCK
+D6   ●  │           │  ● D7  (RX)
+        └───────────┘
+```
+
+## Battery Power
+
+The XIAO ESP32-C6 has built-in LiPo battery support with USB-C charging.
+
+### Wiring: 3.7V LiPo Battery (10,000mAh recommended)
+
+| Battery Wire | XIAO Pad | Location |
+|-------------|----------|----------|
+| + (Red) | BAT+ | Bottom of board, near D5 marking |
+| - (Black) | BAT- | Bottom of board, near D8 marking |
+
+### Battery Pads Location
+
+```
          USB-C
      ┌───────────┐
-D0   │ o       o │  D10 (MOSI) ── Display SDA
-D1   │ o       o │  D9  (MISO) ── Display BL
-D2   │ o       o │  D8  (SCK)  ── Display SCK
-D3   │ o       o │  D7  (RX)
-D4   │ o       o │  D6  (TX)
-D5   │ o       o │  3V3
-GND  │ o       o │  GND
+     │           │
+     │   (top)   │
+     │           │
      └───────────┘
-         [RST]
+     ┌───────────┐
+     │ [BAT+]    │  ← Solder red wire here (near D5 side)
+     │           │
+     │ [BAT-]    │  ← Solder black wire here (near D8 side)
+     └───────────┘
+      (bottom of board)
 ```
+
+### Charging
+
+- Plug USB-C to charge the LiPo automatically (built-in charger IC)
+- Red LED flashes during charging, turns off when full
+- Device runs from battery when USB-C is disconnected
+- No GPIO pins used — battery connects to dedicated pads only
+
+### Power Saving
+
+The firmware uses ESP32-C6 light sleep mode when idle:
+
+| State | Description | Current Draw |
+|-------|-------------|-------------|
+| Active (screen on) | CPU running, WiFi on, display backlight on | ~90 mA |
+| Sleep (screen off) | Light sleep, WiFi off, backlight off | ~3.1 mA |
+
+With a 10,000mAh LiPo at ~4 uses/day (~2 min each): **~4 months battery life**.
+
+Wake from sleep is instant (sub-millisecond) via encoder button press (GPIO2 interrupt).
+
+### Alternative: D-Cell Batteries
+
+For disposable batteries, use a battery holder:
+
+| Config | Voltage | Connect To | Duration |
+|--------|---------|-----------|----------|
+| 3x D alkaline (series) | 4.5V | XIAO 5V pin (+) and GND (-) | ~6 months |
+| 4x AA alkaline (series) | 6.0V | XIAO 5V pin (+) and GND (-) | ~1 month |
 
 ## Notes
 
@@ -80,3 +136,4 @@ GND  │ o       o │  GND
 - **Encoder behavior**: CLK falls before DT = clockwise. DT falls before CLK = counter-clockwise. SW goes LOW when pressed.
 - **Long press**: Short press < 500ms. Long press >= 500ms.
 - **Backlight timeout**: Auto-off after 5 minutes of inactivity (configurable in `firmware/src/config.rs`).
+- **Light sleep**: In Station mode, the device enters light sleep after screen timeout. WiFi is stopped, CPU sleeps at ~3.1mA. Encoder button press wakes instantly.

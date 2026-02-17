@@ -4,7 +4,7 @@
 /// Replaces the Linux framebuffer approach with direct SPI display control.
 use embedded_graphics_core::{
     draw_target::DrawTarget,
-    geometry::{Dimensions, OriginDimensions, Size},
+    geometry::{OriginDimensions, Size},
     pixelcolor::Rgb565,
     Pixel,
 };

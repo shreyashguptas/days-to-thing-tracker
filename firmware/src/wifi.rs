@@ -296,3 +296,22 @@ pub fn web_url_from_ip(ip: [u8; 4]) -> String {
     format!("http://{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3])
 }
 
+/// Stop WiFi for power saving (call before entering light sleep)
+pub fn stop_wifi(wifi: &mut BlockingWifiHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let _ = wifi.disconnect();
+    wifi.stop()?;
+    log::info!("WiFi stopped for power saving");
+    Ok(())
+}
+
+/// Restart WiFi after waking from light sleep (STA mode)
+pub fn restart_wifi(wifi: &mut BlockingWifiHandle) -> Result<[u8; 4], Box<dyn std::error::Error>> {
+    wifi.start()?;
+    wifi.connect()?;
+    wifi.wait_netif_up()?;
+    let ip_info = wifi.wifi().sta_netif().get_ip_info()?;
+    let ip = ip_info.ip.octets();
+    log::info!("WiFi restarted, IP: {}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3]);
+    Ok(ip)
+}
+
