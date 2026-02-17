@@ -88,6 +88,8 @@ fn main() {
         .reset_pin(rst)
         .invert_colors(ColorInversion::Inverted)
         .orientation(Orientation::new().rotate(Rotation::Deg90))
+        .display_size(128, 160)
+        .display_offset(2, 1)
         .init(&mut FreeRtos)
         .unwrap();
 
