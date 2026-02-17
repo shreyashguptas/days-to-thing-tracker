@@ -261,6 +261,7 @@ fn main() {
 
     let mut last_idle_check = Instant::now();
     let mut needs_render = true;
+    let mut wifi_reconnect_at: Option<Instant> = None;
 
     loop {
         // Poll encoder
@@ -293,70 +294,96 @@ fn main() {
             needs_render = false;
         }
 
+        // Deferred WiFi reconnect — wait 3 seconds after wake so the UI
+        // is fully responsive while the user navigates, then reconnect.
+        #[allow(unused_assignments)]
+        if let Some(wake_time) = wifi_reconnect_at {
+            if wake_time.elapsed() > Duration::from_secs(3) {
+                wifi_reconnect_at = None;
+                log::info!("Reconnecting WiFi...");
+
+                let server_ip = if let Some(ref mut w) = sta_wifi {
+                    match wifi::restart_wifi(w) {
+                        Ok(new_ip) => {
+                            nav.ctx.ap_url = wifi::web_url_from_ip(new_ip);
+                            new_ip
+                        }
+                        Err(e) => {
+                            log::error!("WiFi reconnect failed: {}", e);
+                            wifi_mode.ip()
+                        }
+                    }
+                } else {
+                    wifi_mode.ip()
+                };
+
+                match http_server::start_server(
+                    storage.clone(),
+                    time_source.clone(),
+                    server_ip,
+                    wifi_mode.clone(),
+                    None,
+                    nvs_for_reset.clone(),
+                ) {
+                    Ok(s) => {
+                        server = Some(s);
+                        log::info!("HTTP server restarted");
+                    }
+                    Err(e) => {
+                        log::error!("HTTP server restart failed: {}", e);
+                    }
+                }
+            }
+        }
+
         // Check idle timeout periodically
         let now = Instant::now();
         if now.duration_since(last_idle_check) > Duration::from_secs(1) {
+            // QR code screen gets longer timeout so user can scan and use web UI
+            let timeout_secs = if nav.ctx.state == ViewState::QrCode {
+                config::QR_IDLE_TIMEOUT_SECS
+            } else {
+                config::IDLE_TIMEOUT_SECS // TODO: increase for normal use after testing
+            };
+
             if nav.ctx.screen_timeout_enabled
-                && enc.seconds_since_activity() > config::IDLE_TIMEOUT_SECS as f64
+                && enc.seconds_since_activity() > timeout_secs as f64
                 && enc.is_backlight_on()
             {
                 enc.set_backlight(false);
                 log::info!("Screen off (idle timeout)");
 
-                // Power saving in Station mode: stop WiFi + enter light sleep
+                // Power saving in Station mode: stop WiFi + sleep display
                 #[allow(unused_assignments)]
                 if wifi_mode.is_station() {
-                    // Drop HTTP server to free resources
                     server = None;
                     log::info!("HTTP server stopped for sleep");
 
-                    // Stop WiFi (powers down radio)
                     if let Some(ref mut w) = sta_wifi {
                         let _ = wifi::stop_wifi(w);
                     }
 
-                    // Enter light sleep — blocks until encoder button (GPIO2) wakes us
-                    enter_light_sleep();
+                    // Put display controller to sleep (SLPIN, saves ~5-10mA)
+                    let _ = hw_display.sleep(&mut FreeRtos);
 
-                    // === Woke from light sleep ===
-                    log::info!("Woke from light sleep");
-                    enc.set_backlight(true);
-                    enc.reset_activity();
-
-                    // Restart WiFi
-                    let server_ip = if let Some(ref mut w) = sta_wifi {
-                        match wifi::restart_wifi(w) {
-                            Ok(new_ip) => {
-                                nav.ctx.ap_url = wifi::web_url_from_ip(new_ip);
-                                new_ip
-                            }
-                            Err(e) => {
-                                log::error!("WiFi reconnect failed: {}", e);
-                                wifi_mode.ip()
-                            }
-                        }
-                    } else {
-                        wifi_mode.ip()
-                    };
-
-                    // Restart HTTP server
-                    match http_server::start_server(
-                        storage.clone(),
-                        time_source.clone(),
-                        server_ip,
-                        wifi_mode.clone(),
-                        None,
-                        nvs_for_reset.clone(),
-                    ) {
-                        Ok(s) => {
-                            server = Some(s);
-                            log::info!("HTTP server restarted");
-                        }
-                        Err(e) => {
-                            log::error!("HTTP server restart failed: {}", e);
-                        }
+                    // Try light sleep (requires external 10K pull-up on GPIO2)
+                    log::info!("Low-power idle, entering sleep...");
+                    let slept = enter_light_sleep();
+                    if !slept {
+                        // Fallback: external pull-up missing or sleep failed — poll GPIO2
+                        wait_for_button_press();
                     }
 
+                    // === Woke from user input ===
+                    log::info!("Woke up");
+
+                    let _ = hw_display.wake(&mut FreeRtos);
+                    enc.set_backlight(true);
+                    enc.reset_activity();
+                    flush_to_display(&mut hw_display, &fb);
+
+                    // Defer WiFi reconnect 3s so encoder is responsive immediately
+                    wifi_reconnect_at = Some(Instant::now());
                     needs_render = true;
                 }
             }
@@ -567,22 +594,76 @@ fn render_current_view(
     }
 }
 
-/// Enter ESP32-C6 light sleep with GPIO2 (encoder button) as wake source.
-/// Blocks until the button is pressed. All RAM is preserved — wake is instant.
-fn enter_light_sleep() {
+/// Enter light sleep, waking on GPIO2 (encoder button) LOW level.
+/// Requires an external 10K pull-up resistor on GPIO2 to 3V3.
+/// Returns true if sleep was successful, false on failure or spurious wake.
+fn enter_light_sleep() -> bool {
     unsafe {
         use esp_idf_svc::sys::*;
 
-        // Configure GPIO2 (encoder button) as wakeup source
-        // Button is active-low with pull-up, so wake on LOW level
-        gpio_wakeup_enable(
-            config::PIN_ENC_SW,
-            gpio_int_type_t_GPIO_INTR_LOW_LEVEL,
-        );
+        // Check GPIO2 level — if already LOW, pull-up isn't working
+        let level = gpio_get_level(config::PIN_ENC_SW);
+        log::info!("GPIO2 level before sleep: {}", level);
+        if level == 0 {
+            log::warn!("GPIO2 is LOW before sleep — pull-up not effective");
+            return false;
+        }
+
+        gpio_wakeup_enable(config::PIN_ENC_SW, gpio_int_type_t_GPIO_INTR_LOW_LEVEL);
         esp_sleep_enable_gpio_wakeup();
 
-        log::info!("Entering light sleep...");
-        esp_light_sleep_start();
+        // Retry up to 3 times on spurious wakes
+        for attempt in 0..3 {
+            log::info!("Entering light sleep (attempt {})...", attempt + 1);
+            let before = esp_timer_get_time();
+            let ret = esp_light_sleep_start();
+            let elapsed_us = esp_timer_get_time() - before;
+
+            if ret != ESP_OK {
+                log::error!("Light sleep failed: {}", ret);
+                return false;
+            }
+
+            if elapsed_us >= 1_000_000 {
+                log::info!("Slept {}ms", elapsed_us / 1000);
+                return true;
+            }
+
+            log::warn!("Spurious wake ({}us), attempt {}", elapsed_us, attempt + 1);
+            FreeRtos::delay_ms(100);
+        }
+
+        log::error!("Too many spurious wakes, falling back to polling");
+        false
+    }
+}
+
+/// Fallback: poll GPIO2 for button press when light sleep is unavailable
+/// (e.g. no external pull-up resistor). CPU stays active (~19mA).
+fn wait_for_button_press() {
+    unsafe {
+        use esp_idf_svc::sys::*;
+        loop {
+            FreeRtos::delay_ms(10);
+            // Require sustained LOW for 50ms to filter noise
+            if gpio_get_level(config::PIN_ENC_SW) == 0 {
+                let mut held = true;
+                for _ in 0..5 {
+                    FreeRtos::delay_ms(10);
+                    if gpio_get_level(config::PIN_ENC_SW) != 0 {
+                        held = false;
+                        break;
+                    }
+                }
+                if held {
+                    // Wait for release
+                    while gpio_get_level(config::PIN_ENC_SW) == 0 {
+                        FreeRtos::delay_ms(10);
+                    }
+                    break;
+                }
+            }
+        }
     }
 }
 

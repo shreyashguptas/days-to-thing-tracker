@@ -39,7 +39,8 @@ pub const HTTP_PORT: u16 = 80;
 
 // Timing
 pub const POLL_INTERVAL_MS: u64 = 1;
-pub const IDLE_TIMEOUT_SECS: u64 = 300;
+pub const IDLE_TIMEOUT_SECS: u64 = 15; // TODO: increase for normal use after power testing
+pub const QR_IDLE_TIMEOUT_SECS: u64 = 120; // 2 minutes for QR/web UI screens
 pub const COMPLETING_DURATION_MS: u64 = 500;
 
 // Storage
