@@ -609,6 +609,9 @@ fn enter_light_sleep() -> bool {
             return false;
         }
 
+        // Keep active GPIO config (including pull-up) during sleep
+        gpio_sleep_sel_dis(config::PIN_ENC_SW);
+
         gpio_wakeup_enable(config::PIN_ENC_SW, gpio_int_type_t_GPIO_INTR_LOW_LEVEL);
         esp_sleep_enable_gpio_wakeup();
 
@@ -623,6 +626,10 @@ fn enter_light_sleep() -> bool {
                 log::error!("Light sleep failed: {}", ret);
                 return false;
             }
+
+            // Log actual wake cause for diagnostics
+            let cause = esp_sleep_get_wakeup_cause();
+            log::info!("Wake cause: {}, elapsed: {}us", cause, elapsed_us);
 
             if elapsed_us >= 1_000_000 {
                 log::info!("Slept {}ms", elapsed_us / 1000);
